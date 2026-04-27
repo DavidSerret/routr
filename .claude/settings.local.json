@@ -49,7 +49,19 @@
       "Bash(unset __NEXT_PRIVATE_STANDALONE_CONFIG)",
       "Bash(npm uninstall *)",
       "Bash(git init *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(curl -s \"http://localhost:3000/api/airports?q=madrid\")",
+      "Bash(curl -s \"http://localhost:3001/api/airports?q=madrid\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/data/en/airports.json\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); madrid=[a for a in data if 'madrid' in str\\(a\\).lower\\(\\) or 'mad' in str\\(a.get\\('code',''\\)\\).lower\\(\\)]; print\\(json.dumps\\(madrid[:3], indent=2\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&destination=BCN&depart_date=2026-07-01&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&destination=BCN&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&destination=LHR&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/calendar?origin=MAD&destination=BCN&depart_date=2026-07&calendar_type=departure_date&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/direct?origin=MAD&destination=BCN&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\" -H \"X-Access-Token: 8f72169e3a43851fdde43522f9748e9b\")",
+      "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&destination=BCN&depart_date=2026-07&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\")"
     ]
   }
 }

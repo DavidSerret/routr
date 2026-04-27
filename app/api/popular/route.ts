@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       airline: d.airline,
       airlineLogo: airlineLogoUrl(d.airline),
       departureAt: d.departure_at,
-      link: bookingUrl(d.link),
+      link: bookingUrl(d.origin, d.destination, d.departure_at),
     }));
 
     const payload = { destinations, updatedAt: new Date().toISOString() };

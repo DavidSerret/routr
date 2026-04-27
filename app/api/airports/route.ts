@@ -21,21 +21,24 @@ export async function GET(req: NextRequest) {
       await setCache(AIRPORTS_CACHE_KEY, rawAirports, TTL.AIRPORTS);
     }
 
+    const nameEn = (a: typeof rawAirports[number]) =>
+      a.name_translations?.en || a.name;
+
     const airports: Airport[] = (rawAirports ?? [])
       .filter(a =>
-        a.iata_code &&
+        a.code &&
+        a.flightable &&
         (
-          a.iata_code.toLowerCase().includes(q) ||
-          a.name_en?.toLowerCase().includes(q) ||
-          a.city_name?.toLowerCase().includes(q) ||
-          a.city_code?.toLowerCase().includes(q)
+          a.code.toLowerCase().includes(q) ||
+          a.city_code?.toLowerCase().includes(q) ||
+          nameEn(a)?.toLowerCase().includes(q)
         )
       )
       .slice(0, limit)
       .map(a => ({
-        iataCode: a.iata_code,
-        name: a.name_en || a.name,
-        cityName: a.city_name || a.city_code,
+        iataCode: a.code,
+        name: nameEn(a) ?? a.code,
+        cityName: a.city_code,
         countryCode: a.country_code,
         countryFlag: COUNTRY_FLAG_MAP[a.country_code] ?? '🌍',
         latitude: a.coordinates?.lat,

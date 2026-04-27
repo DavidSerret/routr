@@ -89,7 +89,7 @@ export function normalizeTpFlightOffer(
     stops: raw.transfers,
     origin,
     destination,
-    bookingUrl: bookingUrl(raw.link),
+    bookingUrl: bookingUrl(origin, destination, raw.departure_at),
     source: 'travelpayouts',
     badges: [],
     updatedAt: new Date().toISOString(),

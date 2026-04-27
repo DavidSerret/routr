@@ -1,10 +1,15 @@
-const TP_TOKEN = process.env.TRAVELPAYOUTS_TOKEN!;
 const TP_BASE = 'https://api.travelpayouts.com';
 
-const tpHeaders = {
-  'X-Access-Token': TP_TOKEN,
-  'Accept-Encoding': 'gzip, deflate',
-};
+function getToken(): string {
+  return process.env.TRAVELPAYOUTS_TOKEN ?? '';
+}
+
+function tpHeaders(): Record<string, string> {
+  return {
+    'X-Access-Token': getToken(),
+    'Accept-Encoding': 'gzip, deflate',
+  };
+}
 
 export interface TpCheapTicket {
   price: number;
@@ -14,8 +19,9 @@ export interface TpCheapTicket {
   return_at: string | null;
   expires_at: string;
   transfers: number;
-  return_transfers: number;
-  link: string;
+  duration: number;
+  duration_to: number;
+  duration_back: number;
 }
 
 export interface TpCalendarTicket {
@@ -45,13 +51,26 @@ export interface TpDestination {
 }
 
 export interface TpAirport {
-  iata_code: string;
+  code: string;
   name: string;
-  name_en: string;
+  name_translations: { en?: string };
   city_code: string;
-  city_name: string;
   country_code: string;
   coordinates: { lon: number; lat: number };
+  flightable: boolean;
+  iata_type: string;
+}
+
+type RawTicket = Omit<TpCheapTicket, 'transfers'>;
+
+function parseTicketsFromResponse(data: Record<string, Record<string, RawTicket>>): TpCheapTicket[] {
+  const tickets: TpCheapTicket[] = [];
+  for (const destData of Object.values(data)) {
+    for (const [transfersKey, ticket] of Object.entries(destData)) {
+      tickets.push({ ...ticket, transfers: parseInt(transfersKey, 10) });
+    }
+  }
+  return tickets;
 }
 
 export async function fetchCheapTickets(
@@ -61,27 +80,22 @@ export async function fetchCheapTickets(
   returnDate?: string,
   currency = 'EUR'
 ): Promise<TpCheapTicket[]> {
+  const token = getToken();
   const params = new URLSearchParams({
     origin,
     destination,
-    depart_date: departDate,
+    depart_date: departDate.slice(0, 7), // YYYY-MM — month-level gives more results
     currency,
-    token: TP_TOKEN,
+    token,
   });
-  if (returnDate) params.set('return_date', returnDate);
+  if (returnDate) params.set('return_date', returnDate.slice(0, 7));
 
-  const res = await fetch(`${TP_BASE}/v1/prices/cheap?${params}`, { headers: tpHeaders });
-  if (!res.ok) throw new Error(`TP cheap tickets error: ${res.status}`);
-  const json = await res.json() as { success: boolean; data: Record<string, Record<string, TpCheapTicket>>; currency: string };
+  const res = await fetch(`${TP_BASE}/v1/prices/cheap?${params}`, { headers: tpHeaders() });
+  if (!res.ok) throw new Error(`TP cheap tickets error: ${res.status} ${await res.text()}`);
+  const json = await res.json() as { success: boolean; data: Record<string, Record<string, RawTicket>>; currency: string };
   if (!json.success || !json.data) return [];
 
-  const tickets: TpCheapTicket[] = [];
-  for (const destData of Object.values(json.data)) {
-    for (const ticket of Object.values(destData)) {
-      tickets.push(ticket);
-    }
-  }
-  return tickets;
+  return parseTicketsFromResponse(json.data);
 }
 
 export async function fetchDirectTickets(
@@ -90,26 +104,21 @@ export async function fetchDirectTickets(
   departDate: string,
   currency = 'EUR'
 ): Promise<TpCheapTicket[]> {
+  const token = getToken();
   const params = new URLSearchParams({
     origin,
     destination,
-    depart_date: departDate,
+    depart_date: departDate.slice(0, 7),
     currency,
-    token: TP_TOKEN,
+    token,
   });
 
-  const res = await fetch(`${TP_BASE}/v1/prices/direct?${params}`, { headers: tpHeaders });
-  if (!res.ok) throw new Error(`TP direct tickets error: ${res.status}`);
-  const json = await res.json() as { success: boolean; data: Record<string, Record<string, TpCheapTicket>>; currency: string };
+  const res = await fetch(`${TP_BASE}/v1/prices/direct?${params}`, { headers: tpHeaders() });
+  if (!res.ok) throw new Error(`TP direct tickets error: ${res.status} ${await res.text()}`);
+  const json = await res.json() as { success: boolean; data: Record<string, Record<string, RawTicket>>; currency: string };
   if (!json.success || !json.data) return [];
 
-  const tickets: TpCheapTicket[] = [];
-  for (const destData of Object.values(json.data)) {
-    for (const ticket of Object.values(destData)) {
-      tickets.push(ticket);
-    }
-  }
-  return tickets;
+  return parseTicketsFromResponse(json.data);
 }
 
 export async function fetchCalendarPrices(
@@ -124,10 +133,10 @@ export async function fetchCalendarPrices(
     depart_date: month,
     calendar_type: 'departure_date',
     currency,
-    token: TP_TOKEN,
+    token: getToken(),
   });
 
-  const res = await fetch(`${TP_BASE}/v1/prices/calendar?${params}`, { headers: tpHeaders });
+  const res = await fetch(`${TP_BASE}/v1/prices/calendar?${params}`, { headers: tpHeaders() });
   if (!res.ok) throw new Error(`TP calendar error: ${res.status}`);
   const json = await res.json() as { success: boolean; data: Record<string, TpCalendarTicket>; currency: string };
   if (!json.success || !json.data) return [];
@@ -144,10 +153,10 @@ export async function fetchMonthlyPrices(
     origin,
     destination,
     currency,
-    token: TP_TOKEN,
+    token: getToken(),
   });
 
-  const res = await fetch(`${TP_BASE}/v1/prices/monthly?${params}`, { headers: tpHeaders });
+  const res = await fetch(`${TP_BASE}/v1/prices/monthly?${params}`, { headers: tpHeaders() });
   if (!res.ok) throw new Error(`TP monthly error: ${res.status}`);
   const json = await res.json() as { success: boolean; data: Record<string, TpMonthlyTicket>; currency: string };
   if (!json.success || !json.data) return [];
@@ -162,10 +171,10 @@ export async function fetchPopularDestinations(
   const params = new URLSearchParams({
     origin,
     currency,
-    token: TP_TOKEN,
+    token: getToken(),
   });
 
-  const res = await fetch(`${TP_BASE}/v1/city-directions?${params}`, { headers: tpHeaders });
+  const res = await fetch(`${TP_BASE}/v1/city-directions?${params}`, { headers: tpHeaders() });
   if (!res.ok) throw new Error(`TP city-directions error: ${res.status}`);
   const json = await res.json() as { success: boolean; data: Record<string, TpDestination>; currency: string };
   if (!json.success || !json.data) return [];
@@ -177,7 +186,7 @@ let airportsCache: TpAirport[] | null = null;
 
 export async function fetchAirportsJson(): Promise<TpAirport[]> {
   if (airportsCache) return airportsCache;
-  const res = await fetch(`${TP_BASE}/data/en/airports.json`, { headers: tpHeaders });
+  const res = await fetch(`${TP_BASE}/data/en/airports.json`, { headers: tpHeaders() });
   if (!res.ok) throw new Error(`TP airports.json error: ${res.status}`);
   airportsCache = await res.json() as TpAirport[];
   return airportsCache!;
@@ -187,6 +196,7 @@ export function airlineLogoUrl(iataCode: string, size = 200): string {
   return `https://pics.avs.io/${size}/${size}/${iataCode}.png`;
 }
 
-export function bookingUrl(link: string): string {
-  return `https://www.aviasales.com/search/${link.replace(/^\/search\//, '')}`;
+export function bookingUrl(origin: string, destination: string, departureAt: string): string {
+  const date = departureAt.slice(0, 10).replace(/-/g, '');
+  return `https://www.aviasales.com/search/${origin}${date}${destination}1`;
 }
