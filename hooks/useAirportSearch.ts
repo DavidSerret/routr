@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Airport } from '@/lib/types';
+import type { Airport, AirportSearchResult } from '@/lib/types';
 
 const RECENT_KEY = 'routr:recent-airports';
 const MAX_RECENT = 8;
@@ -27,7 +27,7 @@ function saveRecentAirport(airport: Airport) {
 
 export function useAirportSearch() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Airport[]>([]);
+  const [results, setResults] = useState<AirportSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<Airport[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -59,7 +59,7 @@ export function useAirportSearch() {
         });
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
-        setResults(data.airports ?? []);
+        setResults(Array.isArray(data) ? data : []);
       } catch (err) {
         if ((err as Error).name !== 'AbortError') setResults([]);
       } finally {

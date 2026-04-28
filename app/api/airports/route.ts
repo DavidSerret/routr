@@ -1,53 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCache, setCache, TTL } from '@/lib/cache';
-import { fetchAirportsJson } from '@/lib/travelpayouts';
-import { COUNTRY_FLAG_MAP } from '@/lib/constants';
-import type { Airport } from '@/lib/types';
-
-const AIRPORTS_CACHE_KEY = 'tp:airports:all';
+import { getAirports, getCities, getCountries } from '@/lib/staticData';
+import { buildGeographicGroups } from '@/lib/geographicGroups';
+import { isRealAirport, countryCodeToFlag } from '@/lib/airportUtils';
+import type { AirportSearchResult, AirportResult } from '@/lib/types';
 
 export async function GET(req: NextRequest) {
-  const q = req.nextUrl.searchParams.get('q')?.trim().toLowerCase();
+  const q = req.nextUrl.searchParams.get('q')?.trim() ?? '';
   const limit = parseInt(req.nextUrl.searchParams.get('limit') ?? '8', 10);
 
-  if (!q || q.length < 2) {
-    return NextResponse.json({ airports: [] });
-  }
+  if (q.length < 1) return NextResponse.json([]);
 
   try {
-    let rawAirports = await getCache<ReturnType<typeof fetchAirportsJson> extends Promise<infer T> ? T : never>(AIRPORTS_CACHE_KEY);
-    if (!rawAirports) {
-      rawAirports = await fetchAirportsJson();
-      await setCache(AIRPORTS_CACHE_KEY, rawAirports, TTL.AIRPORTS);
-    }
+    const [airports, cities, countries] = await Promise.all([
+      getAirports(),
+      getCities(),
+      getCountries(),
+    ]);
 
-    const nameEn = (a: typeof rawAirports[number]) =>
-      a.name_translations?.en || a.name;
+    const query = q.toLowerCase();
+    const realAirports = airports.filter(isRealAirport);
 
-    const airports: Airport[] = (rawAirports ?? [])
-      .filter(a =>
-        a.code &&
-        a.flightable &&
-        (
-          a.code.toLowerCase().includes(q) ||
-          a.city_code?.toLowerCase().includes(q) ||
-          nameEn(a)?.toLowerCase().includes(q)
-        )
-      )
+    const cityMap = new Map(cities.map(c => [c.code, c]));
+    const countryMap = new Map(countries.map(c => [c.code, c]));
+
+    // 1. Geographic groups (shown first, min 3 chars)
+    const groups = buildGeographicGroups(query, realAirports, countries);
+
+    // 2. Individual airport matches
+    const individualResults: AirportResult[] = realAirports
+      .filter(airport => {
+        const city = cityMap.get(airport.city_code);
+        const country = countryMap.get(airport.country_code);
+        const candidates = [
+          airport.code,
+          airport.name,
+          airport.city_code,
+          airport.country_code,
+          airport.name_translations?.en,
+          airport.name_translations?.es,
+          airport.name_translations?.de,
+          airport.name_translations?.fr,
+          airport.name_translations?.it,
+          airport.name_translations?.ru,
+          city?.name,
+          city?.name_translations?.['en'],
+          city?.name_translations?.['es'],
+          country?.name,
+          country?.name_translations?.['en'],
+          country?.name_translations?.['es'],
+        ];
+        return candidates.some(s => s?.toLowerCase().includes(query));
+      })
       .slice(0, limit)
-      .map(a => ({
-        iataCode: a.code,
-        name: nameEn(a) ?? a.code,
-        cityName: a.city_code,
-        countryCode: a.country_code,
-        countryFlag: COUNTRY_FLAG_MAP[a.country_code] ?? '🌍',
-        latitude: a.coordinates?.lat,
-        longitude: a.coordinates?.lon,
-      }));
+      .map(airport => {
+        const city = cityMap.get(airport.city_code);
+        const country = countryMap.get(airport.country_code);
+        return {
+          code: airport.code,
+          name: airport.name_translations?.en ?? airport.name,
+          cityName: city?.name_translations?.['en'] ?? city?.name ?? airport.city_code,
+          countryCode: airport.country_code,
+          countryName: country?.name ?? airport.country_code,
+          isGroup: false as const,
+        };
+      });
 
-    return NextResponse.json({ airports });
+    const combined: AirportSearchResult[] = [
+      ...groups.slice(0, 2),
+      ...individualResults,
+    ].slice(0, limit + 2);
+
+    return NextResponse.json(combined);
   } catch (err) {
     console.error('Airport search error:', err);
-    return NextResponse.json({ airports: [] });
+    return NextResponse.json([]);
   }
 }

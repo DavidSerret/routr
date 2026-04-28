@@ -1,21 +1,78 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MapPin, Clock, X } from 'lucide-react';
+import { MapPin, Clock, Globe, X } from 'lucide-react';
 import { useAirportSearch } from '@/hooks/useAirportSearch';
+import { countryCodeToFlag } from '@/lib/airportUtils';
 import { cn } from '@/lib/utils';
-import type { Airport } from '@/lib/types';
+import type { Airport, AirportSearchResult, AirportResult, AirportGroupResult } from '@/lib/types';
 
 interface AirportInputProps {
   value: Airport | null;
   onChange: (airport: Airport | null) => void;
+  onGroupSelect?: (airports: Airport[]) => void;
   placeholder?: string;
   label?: string;
   className?: string;
   id?: string;
 }
 
-function AirportOption({ airport, onSelect }: { airport: Airport; onSelect: (a: Airport) => void }) {
+function airportResultToAirport(result: AirportResult): Airport {
+  return {
+    iataCode: result.code,
+    name: result.name,
+    cityName: result.cityName,
+    countryCode: result.countryCode,
+    countryFlag: countryCodeToFlag(result.countryCode),
+  };
+}
+
+function groupResultToAirports(group: AirportGroupResult): Airport[] {
+  return group.airports.map(a => ({
+    iataCode: a.code,
+    name: a.code,
+    cityName: a.cityCode,
+    countryCode: a.countryCode,
+    countryFlag: countryCodeToFlag(a.countryCode),
+  }));
+}
+
+function IndividualOption({ result, onSelect }: { result: AirportResult; onSelect: (r: AirportResult) => void }) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[#1a1a24] transition-colors duration-100 rounded-md"
+      onClick={() => onSelect(result)}
+    >
+      <span className="text-base">{countryCodeToFlag(result.countryCode)}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="font-mono-price text-sm font-bold text-white">{result.code}</span>
+          <span className="truncate text-sm text-[#8888aa]">{result.cityName}</span>
+        </div>
+        <p className="truncate text-xs text-[#55556a]">{result.name}</p>
+      </div>
+    </button>
+  );
+}
+
+function GroupOption({ result, onSelect }: { result: AirportGroupResult; onSelect: (r: AirportGroupResult) => void }) {
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-[#6366f1]/10 transition-colors duration-100 rounded-md border-l-2 border-[#6366f1]"
+      onClick={() => onSelect(result)}
+    >
+      <Globe className="h-4 w-4 text-[#6366f1] flex-shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-white truncate">{result.name}</div>
+        <div className="text-xs text-[#6366f1]">Search all airports simultaneously</div>
+      </div>
+    </button>
+  );
+}
+
+function RecentOption({ airport, onSelect }: { airport: Airport; onSelect: (a: Airport) => void }) {
   return (
     <button
       type="button"
@@ -34,7 +91,7 @@ function AirportOption({ airport, onSelect }: { airport: Airport; onSelect: (a: 
   );
 }
 
-export function AirportInput({ value, onChange, placeholder = 'City or airport', label, className, id }: AirportInputProps) {
+export function AirportInput({ value, onChange, onGroupSelect, placeholder = 'City or airport', label, className, id }: AirportInputProps) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +129,27 @@ export function AirportInput({ value, onChange, placeholder = 'City or airport',
     search(e.target.value);
   }
 
-  function handleSelect(airport: Airport) {
+  function handleSelectIndividual(result: AirportResult) {
+    const airport = airportResultToAirport(result);
+    selectAirport(airport);
+    onChange(airport);
+    setOpen(false);
+  }
+
+  function handleSelectGroup(result: AirportGroupResult) {
+    const airports = groupResultToAirports(result);
+    if (onGroupSelect) {
+      onGroupSelect(airports);
+    } else {
+      // Fallback: select just the first airport
+      if (airports[0]) onChange(airports[0]);
+    }
+    setInputValue('');
+    clear();
+    setOpen(false);
+  }
+
+  function handleSelectRecent(airport: Airport) {
     selectAirport(airport);
     onChange(airport);
     setOpen(false);
@@ -86,8 +163,8 @@ export function AirportInput({ value, onChange, placeholder = 'City or airport',
     inputRef.current?.focus();
   }
 
-  const showResults = open && (results.length > 0 || recent.length > 0 || loading);
-  const displayList = inputValue.trim().length >= 2 ? results : recent;
+  const isSearching = inputValue.trim().length >= 2;
+  const showDropdown = open && (results.length > 0 || recent.length > 0 || loading);
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
@@ -124,21 +201,33 @@ export function AirportInput({ value, onChange, placeholder = 'City or airport',
         )}
       </div>
 
-      {showResults && (
+      {showDropdown && (
         <div className="absolute z-50 mt-1.5 w-full min-w-[280px] rounded-xl border border-[#2a2a3a] bg-[#111118] p-1.5 shadow-2xl">
           {loading && (
             <div className="px-3 py-3 text-sm text-[#8888aa]">Searching...</div>
           )}
-          {!loading && inputValue.trim().length < 2 && recent.length > 0 && (
-            <div className="mb-1 flex items-center gap-1.5 px-3 pt-1 text-xs text-[#55556a]">
-              <Clock className="h-3 w-3" />
-              Recent
-            </div>
+
+          {!loading && !isSearching && recent.length > 0 && (
+            <>
+              <div className="mb-1 flex items-center gap-1.5 px-3 pt-1 text-xs text-[#55556a]">
+                <Clock className="h-3 w-3" />
+                Recent
+              </div>
+              {recent.map(airport => (
+                <RecentOption key={airport.iataCode} airport={airport} onSelect={handleSelectRecent} />
+              ))}
+            </>
           )}
-          {!loading && displayList.map(airport => (
-            <AirportOption key={airport.iataCode} airport={airport} onSelect={handleSelect} />
-          ))}
-          {!loading && displayList.length === 0 && inputValue.trim().length >= 2 && (
+
+          {!loading && isSearching && results.map(result =>
+            result.isGroup ? (
+              <GroupOption key={result.code} result={result} onSelect={handleSelectGroup} />
+            ) : (
+              <IndividualOption key={result.code} result={result as AirportResult} onSelect={handleSelectIndividual} />
+            )
+          )}
+
+          {!loading && isSearching && results.length === 0 && (
             <div className="px-3 py-3 text-sm text-[#8888aa]">No airports found</div>
           )}
         </div>

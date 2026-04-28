@@ -53,7 +53,7 @@ export interface TpDestination {
 export interface TpAirport {
   code: string;
   name: string;
-  name_translations: { en?: string };
+  name_translations: { en?: string; es?: string; de?: string; fr?: string; it?: string; ru?: string; pt?: string; [key: string]: string | undefined };
   city_code: string;
   country_code: string;
   coordinates: { lon: number; lat: number };

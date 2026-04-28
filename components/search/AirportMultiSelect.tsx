@@ -35,6 +35,24 @@ export function AirportMultiSelect({
     onChange([...values, airport]);
   }
 
+  function addGroupAirports(airports: Airport[]) {
+    const existing = new Set(values.map(a => a.iataCode));
+    const toAdd = airports
+      .filter(a => !existing.has(a.iataCode))
+      .slice(0, maxAirports - values.length);
+    if (toAdd.length > 0) {
+      onChange([...values, ...toAdd]);
+      setExpanded(true);
+    }
+  }
+
+  function setPrimaryAndExpand(airports: Airport[]) {
+    // When group selected on collapsed primary input: replace all with group airports
+    const toSet = airports.slice(0, maxAirports);
+    onChange(toSet);
+    setExpanded(true);
+  }
+
   const canAdd = values.length < maxAirports;
   const primaryValue = values[0] ?? null;
 
@@ -58,6 +76,7 @@ export function AirportMultiSelect({
             if (a) onChange([a, ...values.slice(1)]);
             else onChange(values.slice(1));
           }}
+          onGroupSelect={setPrimaryAndExpand}
           placeholder={placeholder}
         />
         {values.length > 1 && (
@@ -97,6 +116,7 @@ export function AirportMultiSelect({
         <AirportInput
           value={null}
           onChange={addAirport}
+          onGroupSelect={addGroupAirports}
           placeholder="Add another airport..."
         />
       )}
