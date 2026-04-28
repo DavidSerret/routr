@@ -43,6 +43,51 @@ const REGIONS: Record<string, RegionDef> = {
   'paises del golfo': { label: 'Gulf Countries', emoji: '🕌', countryCodes: ['AE','SA','QA','KW','BH','OM'] },
 };
 
+export const COUNTRY_TOP_AIRPORTS: Record<string, string[]> = {
+  ES: ['MAD','BCN','AGP','PMI','ALC'],
+  PT: ['LIS','OPO','FAO'],
+  DE: ['FRA','MUC','DUS','TXL','HAM'],
+  FR: ['CDG','ORY','NCE','LYS','MRS'],
+  IT: ['FCO','MXP','VCE','NAP','BLQ'],
+  GB: ['LHR','LGW','MAN','STN','EDI'],
+  DK: ['CPH','BLL','AAL'],
+  SE: ['ARN','GOT','MMX'],
+  NO: ['OSL','BGO','TRD'],
+  FI: ['HEL','TMP','TKU'],
+  NL: ['AMS','EIN','RTM'],
+  BE: ['BRU','CRL','LGG'],
+  CH: ['ZRH','GVA','BSL'],
+  AT: ['VIE','GRZ','INN'],
+  PL: ['WAW','KRK','GDN'],
+  GR: ['ATH','SKG','HER','RHO','CFU'],
+  TR: ['IST','SAW','AYT','ADB','ESB'],
+  US: ['JFK','LAX','ORD','ATL','MIA'],
+  CA: ['YYZ','YVR','YUL','YYC','YEG'],
+  MX: ['MEX','CUN','GDL','MTY','TIJ'],
+  BR: ['GRU','GIG','BSB','SSA','FOR'],
+  AR: ['EZE','AEP','COR','MDZ','BRC'],
+  AU: ['SYD','MEL','BNE','PER','ADL'],
+  JP: ['NRT','HND','KIX','CTS','FUK'],
+  CN: ['PEK','PVG','CAN','SZX','CTU'],
+  IN: ['DEL','BOM','BLR','MAA','CCU'],
+  TH: ['BKK','DMK','HKT','CNX','USM'],
+  ID: ['CGK','DPS','SUB','KNO','UPG'],
+  AE: ['DXB','AUH','SHJ'],
+  SA: ['RUH','JED','DMM'],
+  ZA: ['JNB','CPT','DUR'],
+  MA: ['CMN','RAK','AGA'],
+  EG: ['CAI','HRG','SSH','LXR'],
+};
+
+export function getTopAirportsForGroup(airportCodes: string[], countryCode: string): string[] {
+  const top = COUNTRY_TOP_AIRPORTS[countryCode];
+  if (top) {
+    const hits = top.filter(c => airportCodes.includes(c));
+    if (hits.length > 0) return hits.slice(0, 5);
+  }
+  return airportCodes.slice(0, 5);
+}
+
 export function buildGeographicGroups(
   query: string,
   airports: TpAirport[],

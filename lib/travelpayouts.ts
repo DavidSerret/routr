@@ -34,9 +34,11 @@ export interface TpCalendarTicket {
 export interface TpMonthlyTicket {
   price: number;
   airline: string;
+  flight_number: number;
   departure_at: string;
   return_at: string | null;
   expires_at: string;
+  transfers: number;
 }
 
 export interface TpDestination {

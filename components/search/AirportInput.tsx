@@ -10,7 +10,7 @@ import type { Airport, AirportSearchResult, AirportResult, AirportGroupResult } 
 interface AirportInputProps {
   value: Airport | null;
   onChange: (airport: Airport | null) => void;
-  onGroupSelect?: (airports: Airport[]) => void;
+  onGroupSelect?: (group: AirportGroupResult) => void;
   placeholder?: string;
   label?: string;
   className?: string;
@@ -27,15 +27,6 @@ function airportResultToAirport(result: AirportResult): Airport {
   };
 }
 
-function groupResultToAirports(group: AirportGroupResult): Airport[] {
-  return group.airports.map(a => ({
-    iataCode: a.code,
-    name: a.code,
-    cityName: a.cityCode,
-    countryCode: a.countryCode,
-    countryFlag: countryCodeToFlag(a.countryCode),
-  }));
-}
 
 function IndividualOption({ result, onSelect }: { result: AirportResult; onSelect: (r: AirportResult) => void }) {
   return (
@@ -137,12 +128,20 @@ export function AirportInput({ value, onChange, onGroupSelect, placeholder = 'Ci
   }
 
   function handleSelectGroup(result: AirportGroupResult) {
-    const airports = groupResultToAirports(result);
     if (onGroupSelect) {
-      onGroupSelect(airports);
+      onGroupSelect(result);
     } else {
-      // Fallback: select just the first airport
-      if (airports[0]) onChange(airports[0]);
+      // Fallback: select just the first airport from the group
+      const first = result.airports[0];
+      if (first) {
+        onChange({
+          iataCode: first.code,
+          name: first.code,
+          cityName: first.cityCode,
+          countryCode: first.countryCode,
+          countryFlag: countryCodeToFlag(first.countryCode),
+        });
+      }
     }
     setInputValue('');
     clear();

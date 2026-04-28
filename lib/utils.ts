@@ -1,7 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { FlightOffer } from "./types";
-import type { TpCheapTicket } from "./travelpayouts";
 import { airlineLogoUrl, bookingUrl } from "./travelpayouts";
 
 export function cn(...inputs: ClassValue[]) {
@@ -66,8 +65,18 @@ export function isExpired(expiresAt: string): boolean {
   return new Date(expiresAt) < new Date();
 }
 
+type TicketInput = {
+  price: number;
+  airline: string;
+  flight_number: number;
+  departure_at: string;
+  return_at: string | null;
+  expires_at: string;
+  transfers: number;
+};
+
 export function normalizeTpFlightOffer(
-  raw: TpCheapTicket,
+  raw: TicketInput,
   origin: string,
   destination: string,
   currency: string,
