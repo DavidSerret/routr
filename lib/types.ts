@@ -12,23 +12,6 @@ export interface Airport {
   longitude?: number;
 }
 
-// Travelpayouts static data types
-export interface TpCity {
-  code: string;
-  name: string;
-  country_code: string;
-  name_translations: Record<string, string | undefined>;
-  coordinates: { lon: number; lat: number };
-  has_flightable_airport?: boolean;
-}
-
-export interface TpCountry {
-  code: string;
-  name: string;
-  currency: string;
-  name_translations: Record<string, string | undefined>;
-}
-
 // Airport search result types returned by /api/airports
 export interface AirportResult {
   code: string;

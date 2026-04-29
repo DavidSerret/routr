@@ -1,5 +1,5 @@
-import type { TpAirport } from './travelpayouts';
-import type { TpCountry, AirportGroupResult } from './types';
+import type { CuratedAirport } from './staticData';
+import type { AirportGroupResult } from './types';
 import { countryCodeToFlag } from './airportUtils';
 
 interface RegionDef {
@@ -46,7 +46,7 @@ const REGIONS: Record<string, RegionDef> = {
 export const COUNTRY_TOP_AIRPORTS: Record<string, string[]> = {
   ES: ['MAD','BCN','AGP','PMI','ALC'],
   PT: ['LIS','OPO','FAO'],
-  DE: ['FRA','MUC','DUS','TXL','HAM'],
+  DE: ['FRA','MUC','DUS','BER','HAM'],
   FR: ['CDG','ORY','NCE','LYS','MRS'],
   IT: ['FCO','MXP','VCE','NAP','BLQ'],
   GB: ['LHR','LGW','MAN','STN','EDI'],
@@ -90,8 +90,7 @@ export function getTopAirportsForGroup(airportCodes: string[], countryCode: stri
 
 export function buildGeographicGroups(
   query: string,
-  airports: TpAirport[],
-  countries: TpCountry[]
+  airports: CuratedAirport[]
 ): AirportGroupResult[] {
   const q = query.toLowerCase().trim();
   if (q.length < 3) return [];
@@ -107,8 +106,8 @@ export function buildGeographicGroups(
     seen.add(regionKey);
 
     const regionAirports = airports
-      .filter(a => region.countryCodes.includes(a.country_code))
-      .map(a => ({ code: a.code, cityCode: a.city_code, countryCode: a.country_code }));
+      .filter(a => region.countryCodes.includes(a.cc))
+      .map(a => ({ code: a.code, cityCode: a.city, countryCode: a.cc }));
 
     if (regionAirports.length > 0) {
       results.push({
@@ -122,32 +121,32 @@ export function buildGeographicGroups(
     }
   }
 
-  // 2. Country matches (by name in any translation or ISO code)
-  const matchedCountries = countries.filter(country => {
-    const names = [
-      country.name,
-      country.code,
-      ...Object.values(country.name_translations).filter(Boolean),
-    ].map(n => (n as string).toLowerCase());
-    return names.some(n => n.includes(q));
-  });
+  // 2. Country matches (by country name EN/ES or ISO code)
+  const matchedCcs = new Set<string>();
+  for (const airport of airports) {
+    const names = [airport.country, airport.country_es, airport.cc].map(n => n.toLowerCase());
+    if (names.some(n => n.includes(q))) {
+      matchedCcs.add(airport.cc);
+    }
+  }
 
-  for (const country of matchedCountries.slice(0, 3)) {
-    const groupCode = `GROUP_COUNTRY_${country.code}`;
+  for (const cc of Array.from(matchedCcs).slice(0, 3)) {
+    const groupCode = `GROUP_COUNTRY_${cc}`;
     if (seen.has(groupCode)) continue;
     seen.add(groupCode);
 
     const countryAirports = airports
-      .filter(a => a.country_code === country.code)
-      .map(a => ({ code: a.code, cityCode: a.city_code, countryCode: a.country_code }));
+      .filter(a => a.cc === cc)
+      .map(a => ({ code: a.code, cityCode: a.city, countryCode: a.cc }));
 
     if (countryAirports.length > 0) {
-      const flag = countryCodeToFlag(country.code);
+      const sample = airports.find(a => a.cc === cc)!;
+      const flag = countryCodeToFlag(cc);
       results.push({
         code: groupCode,
-        name: `${flag} ${country.name} — All airports (${countryAirports.length})`,
+        name: `${flag} ${sample.country} — All airports (${countryAirports.length})`,
         cityName: `${countryAirports.length} airports`,
-        countryCode: country.code,
+        countryCode: cc,
         isGroup: true,
         airports: countryAirports,
       });

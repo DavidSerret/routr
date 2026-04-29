@@ -52,17 +52,6 @@ export interface TpDestination {
   link: string;
 }
 
-export interface TpAirport {
-  code: string;
-  name: string;
-  name_translations: { en?: string; es?: string; de?: string; fr?: string; it?: string; ru?: string; pt?: string; [key: string]: string | undefined };
-  city_code: string;
-  country_code: string;
-  coordinates: { lon: number; lat: number };
-  flightable: boolean;
-  iata_type: string;
-}
-
 type RawTicket = Omit<TpCheapTicket, 'transfers'>;
 
 function parseTicketsFromResponse(data: Record<string, Record<string, RawTicket>>): TpCheapTicket[] {
@@ -182,16 +171,6 @@ export async function fetchPopularDestinations(
   if (!json.success || !json.data) return [];
 
   return Object.values(json.data);
-}
-
-let airportsCache: TpAirport[] | null = null;
-
-export async function fetchAirportsJson(): Promise<TpAirport[]> {
-  if (airportsCache) return airportsCache;
-  const res = await fetch(`${TP_BASE}/data/en/airports.json`, { headers: tpHeaders() });
-  if (!res.ok) throw new Error(`TP airports.json error: ${res.status}`);
-  airportsCache = await res.json() as TpAirport[];
-  return airportsCache!;
 }
 
 export function airlineLogoUrl(iataCode: string, size = 200): string {
