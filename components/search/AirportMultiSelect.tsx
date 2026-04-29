@@ -107,7 +107,6 @@ export function AirportMultiSelect({
         : groupInfo.groupType === 'subregion'
         ? `${groupInfo.searchCount} airports`
         : `top ${groupInfo.searchCount} airports`;
-
     return (
       <div className={cn('', className)}>
         <span className="mb-1 block text-xs font-medium text-[#8888aa]">{label}</span>
@@ -167,6 +166,33 @@ export function AirportMultiSelect({
     );
   }
 
+  // Shared group chip used in both collapsed and expanded states
+  const groupChip = groupInfo ? (() => {
+    const flag = countryCodeToFlag(groupInfo.countryCode);
+    const countLabel =
+      groupInfo.groupType === 'continent'
+        ? `${groupInfo.searchCount} hubs`
+        : groupInfo.groupType === 'subregion'
+        ? `${groupInfo.searchCount} airports`
+        : `top ${groupInfo.searchCount} airports`;
+    return (
+      <div className="flex items-center gap-2 h-11 rounded-lg border border-[#6366f1]/40 bg-[#6366f1]/10 px-3">
+        <Globe className="h-4 w-4 text-[#6366f1] flex-shrink-0" />
+        <span className="flex-1 text-sm text-white truncate">
+          {flag} {groupInfo.name.replace(/^[^\s]+\s/, '').split(' —')[0]}
+          <span className="ml-1.5 text-xs text-[#6366f1]">({countLabel})</span>
+        </span>
+        <button
+          type="button"
+          onClick={clearGroup}
+          className="text-[#55556a] hover:text-white transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  })() : null;
+
   return (
     <div className={cn('rounded-xl border border-[#2a2a3a] bg-[#111118] p-3', className)}>
       <div className="flex items-center justify-between mb-2">
@@ -179,26 +205,38 @@ export function AirportMultiSelect({
           <ChevronDown className="h-4 w-4" />
         </button>
       </div>
-      <p className="text-xs text-[#55556a] mb-2">Search multiple airports at once (up to {maxAirports})</p>
 
-      {values.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {values.map(airport => (
-            <AirportChip key={airport.iataCode} airport={airport} onRemove={removeAirport} />
-          ))}
-        </div>
-      )}
-
-      {canAdd && (
-        <AirportInput
-          value={null}
-          onChange={addAirport}
-          onGroupSelect={addGroupAirports}
-          placeholder="Add another airport..."
-        />
-      )}
-      {!canAdd && (
-        <p className="text-xs text-[#55556a] mt-1">Maximum {maxAirports} airports selected</p>
+      {groupInfo ? (
+        <>
+          {groupChip}
+          <p className="mt-2 text-xs text-[#55556a]">
+            {'Searching: '}
+            {values.slice(0, 5).map(a => a.iataCode).join(', ')}
+            {values.length > 5 && ` and ${values.length - 5} more`}
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-[#55556a] mb-2">Search multiple airports at once (up to {maxAirports})</p>
+          {values.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {values.map(airport => (
+                <AirportChip key={airport.iataCode} airport={airport} onRemove={removeAirport} />
+              ))}
+            </div>
+          )}
+          {canAdd && (
+            <AirportInput
+              value={null}
+              onChange={addAirport}
+              onGroupSelect={addGroupAirports}
+              placeholder="Add another airport..."
+            />
+          )}
+          {!canAdd && (
+            <p className="text-xs text-[#55556a] mt-1">Maximum {maxAirports} airports selected</p>
+          )}
+        </>
       )}
     </div>
   );
