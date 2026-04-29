@@ -28,6 +28,7 @@ export interface AirportGroupResult {
   cityName: string;
   countryCode: string;
   isGroup: true;
+  groupType: 'continent' | 'subregion' | 'country';
   airports: Array<{ code: string; cityCode: string; countryCode: string }>;
 }
 

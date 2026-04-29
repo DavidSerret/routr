@@ -21,6 +21,8 @@ interface GroupInfo {
   name: string;
   countryCode: string;
   totalCount: number;
+  searchCount: number;
+  groupType: 'continent' | 'subregion' | 'country';
 }
 
 export function AirportMultiSelect({
@@ -48,15 +50,12 @@ export function AirportMultiSelect({
   function addAirport(airport: Airport | null) {
     if (!airport) return;
     if (values.some(a => a.iataCode === airport.iataCode)) return;
-    setGroupInfo(null); // exit group mode when individual airport added
+    setGroupInfo(null);
     onChange([...values, airport]);
   }
 
   function handleGroupSelect(group: AirportGroupResult) {
-    const topCodes = getTopAirportsForGroup(
-      group.airports.map(a => a.code),
-      group.countryCode
-    );
+    const topCodes = getTopAirportsForGroup(group);
 
     const topAirports: Airport[] = topCodes.map(code => {
       const found = group.airports.find(a => a.code === code);
@@ -73,6 +72,8 @@ export function AirportMultiSelect({
       name: group.name,
       countryCode: group.countryCode,
       totalCount: group.airports.length,
+      searchCount: topCodes.length,
+      groupType: group.groupType,
     });
     onChange(topAirports);
     setExpanded(false);
@@ -80,10 +81,7 @@ export function AirportMultiSelect({
 
   function addGroupAirports(group: AirportGroupResult) {
     const existing = new Set(values.map(a => a.iataCode));
-    const topCodes = getTopAirportsForGroup(
-      group.airports.map(a => a.code),
-      group.countryCode
-    );
+    const topCodes = getTopAirportsForGroup(group);
     const toAdd: Airport[] = topCodes
       .filter(c => !existing.has(c))
       .slice(0, maxAirports - values.length)
@@ -103,6 +101,13 @@ export function AirportMultiSelect({
   // Collapsed group chip mode
   if (!expanded && groupInfo) {
     const flag = countryCodeToFlag(groupInfo.countryCode);
+    const countLabel =
+      groupInfo.groupType === 'continent'
+        ? `${groupInfo.searchCount} hubs`
+        : groupInfo.groupType === 'subregion'
+        ? `${groupInfo.searchCount} airports`
+        : `top ${groupInfo.searchCount} airports`;
+
     return (
       <div className={cn('', className)}>
         <span className="mb-1 block text-xs font-medium text-[#8888aa]">{label}</span>
@@ -110,7 +115,7 @@ export function AirportMultiSelect({
           <Globe className="h-4 w-4 text-[#6366f1] flex-shrink-0" />
           <span className="flex-1 text-sm text-white truncate">
             {flag} {groupInfo.name.replace(/^[^\s]+\s/, '').split(' —')[0]}
-            <span className="ml-1.5 text-xs text-[#6366f1]">({groupInfo.totalCount} airports)</span>
+            <span className="ml-1.5 text-xs text-[#6366f1]">({countLabel})</span>
           </span>
           <button
             type="button"
