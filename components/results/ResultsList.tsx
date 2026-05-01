@@ -4,13 +4,17 @@ import { useMemo } from 'react';
 import { Plane } from 'lucide-react';
 import { FlightCard } from './FlightCard';
 import { FlightCardSkeleton } from './FlightCardSkeleton';
-import type { FlightOffer } from '@/lib/types';
+import { formatDate } from '@/lib/utils';
+import type { FlightOffer, TripType } from '@/lib/types';
 import type { SortOption } from '@/lib/constants';
 
 interface ResultsListProps {
   flights: FlightOffer[];
   loading: boolean;
   sortBy: SortOption;
+  tripType: TripType;
+  hasExactDateResults?: boolean | null;
+  requestedDate?: string | null;
 }
 
 function sortFlights(flights: FlightOffer[], sortBy: SortOption): FlightOffer[] {
@@ -35,7 +39,7 @@ function sortFlights(flights: FlightOffer[], sortBy: SortOption): FlightOffer[] 
   });
 }
 
-export function ResultsList({ flights, loading, sortBy }: ResultsListProps) {
+export function ResultsList({ flights, loading, sortBy, tripType, hasExactDateResults, requestedDate }: ResultsListProps) {
   const sorted = useMemo(() => sortFlights(flights, sortBy), [flights, sortBy]);
 
   if (loading) {
@@ -64,8 +68,18 @@ export function ResultsList({ flights, loading, sortBy }: ResultsListProps) {
 
   return (
     <div className="space-y-3">
+      {requestedDate && hasExactDateResults === false && (
+        <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/10 px-4 py-3 text-sm text-[#f59e0b]">
+          ⚠️ No cached prices found near {formatDate(requestedDate)}. Showing nearest available prices — click &quot;View deal&quot; to check current availability.
+        </div>
+      )}
+      {requestedDate && hasExactDateResults === true && (
+        <p className="text-xs text-[#55556a]">
+          Showing flights near {formatDate(requestedDate)}. Prices are indicative.
+        </p>
+      )}
       {sorted.map(flight => (
-        <FlightCard key={flight.id} flight={flight} />
+        <FlightCard key={flight.id} flight={flight} tripType={tripType} />
       ))}
     </div>
   );

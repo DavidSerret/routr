@@ -97,8 +97,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    merged.sort((a, b) => a.price - b.price);
-    const withBadges = assignBadges(merged);
+    // Date filtering: prefer flights within ±3 days of the requested departure date
+    const requested = new Date(body.departureDate + 'T00:00:00');
+    const minDate = new Date(requested);
+    const maxDate = new Date(requested);
+    minDate.setDate(minDate.getDate() - 3);
+    maxDate.setDate(maxDate.getDate() + 3);
+
+    const exact = merged.filter(f => {
+      const d = new Date(f.departureAt);
+      return d >= minDate && d <= maxDate;
+    });
+
+    const hasExactDateResults = exact.length > 0;
+    const toShow = hasExactDateResults ? exact : merged;
+
+    // Sort by proximity to requested date first, then by price
+    toShow.sort((a, b) => {
+      const dA = Math.abs(new Date(a.departureAt).getTime() - requested.getTime());
+      const dB = Math.abs(new Date(b.departureAt).getTime() - requested.getTime());
+      if (dA !== dB) return dA - dB;
+      return a.price - b.price;
+    });
+
+    const withBadges = assignBadges(toShow);
 
     const message = withBadges.length === 0
       ? 'No recent price data for this route. Try nearby airports or a different month.'
@@ -110,6 +132,8 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
       totalCount: withBadges.length,
       currencyCode: body.currencyCode ?? 'EUR',
+      hasExactDateResults,
+      requestedDate: body.departureDate,
       ...(message ? { message } : {}),
     });
   } catch (err) {

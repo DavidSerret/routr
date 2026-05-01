@@ -68,7 +68,8 @@
       "Bash(python -c \"import json,sys; data=json.load\\(sys.stdin\\); print\\('Count:', len\\(data\\)\\); es=[x for x in data if x.get\\('code'\\)=='ES']; print\\('Spain:', json.dumps\\(es, indent=2\\)\\)\")",
       "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&destination=BCN&depart_date=2026-05&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\")",
       "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/monthly?origin=MAD&destination=BCN&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\")",
-      "Bash(node scripts/build.mjs)"
+      "Bash(node scripts/build.mjs)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -File | Where-Object {$_.Name -match \"\\(route\\\\.ts|page\\\\.tsx|FlightCard|ResultsList|SearchForm\\)\" } | Select-Object -ExpandProperty FullName)"
     ]
   }
 }

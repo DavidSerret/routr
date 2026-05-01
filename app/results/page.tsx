@@ -16,7 +16,7 @@ import { Navbar } from '@/components/ui/Navbar';
 
 function ResultsContent() {
   const searchParams = useSearchParams();
-  const { flights, loading, error, updatedAt, totalCount, search } = useFlightSearch();
+  const { flights, loading, error, updatedAt, totalCount, hasExactDateResults, requestedDate, search } = useFlightSearch();
   const { filters, filtered, updateFilter, resetFilters, activeFilterCount } = useFilters(flights);
   const [sortBy, setSortBy] = useState<SortOption>('best');
   const [view, setView] = useState<'list' | 'calendar'>('list');
@@ -126,7 +126,14 @@ function ResultsContent() {
               destination={destinations[0] ?? null}
             />
           ) : (
-            <ResultsList flights={filtered} loading={loading} sortBy={sortBy} />
+            <ResultsList
+              flights={filtered}
+              loading={loading}
+              sortBy={sortBy}
+              tripType={tripType}
+              hasExactDateResults={hasExactDateResults}
+              requestedDate={requestedDate}
+            />
           )}
         </div>
       </div>

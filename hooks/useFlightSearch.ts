@@ -10,6 +10,8 @@ interface SearchState {
   updatedAt: string | null;
   totalCount: number;
   currencyCode: string;
+  hasExactDateResults: boolean | null;
+  requestedDate: string | null;
 }
 
 export function useFlightSearch() {
@@ -20,6 +22,8 @@ export function useFlightSearch() {
     updatedAt: null,
     totalCount: 0,
     currencyCode: 'EUR',
+    hasExactDateResults: null,
+    requestedDate: null,
   });
 
   const search = useCallback(async (params: SearchParams) => {
@@ -53,6 +57,8 @@ export function useFlightSearch() {
         updatedAt: data.updatedAt,
         totalCount: data.totalCount ?? 0,
         currencyCode: data.currencyCode ?? 'EUR',
+        hasExactDateResults: data.hasExactDateResults ?? null,
+        requestedDate: data.requestedDate ?? null,
       });
     } catch (err) {
       setState(s => ({
@@ -71,6 +77,8 @@ export function useFlightSearch() {
       updatedAt: null,
       totalCount: 0,
       currencyCode: 'EUR',
+      hasExactDateResults: null,
+      requestedDate: null,
     });
   }, []);
 

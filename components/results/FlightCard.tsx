@@ -5,13 +5,14 @@ import { FlightBadgeChip } from '@/components/ui/FlightBadge';
 import { PriceTag } from '@/components/ui/PriceTag';
 import { cn, formatTime, formatDateShort, getStopLabel, isExpired } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
-import type { FlightOffer } from '@/lib/types';
+import type { FlightOffer, TripType } from '@/lib/types';
 
 interface FlightCardProps {
   flight: FlightOffer;
+  tripType: TripType;
 }
 
-export function FlightCard({ flight }: FlightCardProps) {
+export function FlightCard({ flight, tripType }: FlightCardProps) {
   const expired = isExpired(flight.expiresAt);
 
   return (
@@ -62,7 +63,7 @@ export function FlightCard({ flight }: FlightCardProps) {
             </div>
           </div>
 
-          {flight.returnAt && (
+          {tripType !== 'one-way' && flight.returnAt && (
             <div className="mt-2 flex items-center gap-2 text-xs text-[#8888aa]">
               <div className="h-px flex-1 bg-[#2a2a3a] border-dashed" />
               <span>Return: {formatDateShort(flight.returnAt)} {formatTime(flight.returnAt)}</span>
