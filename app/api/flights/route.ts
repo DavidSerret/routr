@@ -37,10 +37,25 @@ export async function GET(req: NextRequest) {
 
     const result = await searchFlights({ slices, passengers, cabin_class: cabin });
 
+    // Normalize all offers
+    const normalized = (result.offers ?? []).map(normalizeDuffelOffer);
+
+    // Deduplicate by outbound flight number + departure time (minute precision).
+    // For round-trips Duffel returns every outbound×inbound combination as a separate
+    // offer. We keep only the cheapest combination for each distinct outbound flight.
+    const seen = new Map<string, typeof normalized[0]>();
+    for (const offer of normalized) {
+      const key = `${offer.flightNumber}-${offer.departureAt.slice(0, 16)}`;
+      const existing = seen.get(key);
+      if (!existing || offer.price < existing.price) {
+        seen.set(key, offer);
+      }
+    }
+
     const flights = assignBadges(
-      (result.offers ?? [])
-        .map(normalizeDuffelOffer)
-        .sort((a: { price: number }, b: { price: number }) => a.price - b.price)
+      Array.from(seen.values())
+        .sort((a, b) => a.price - b.price)
+        .slice(0, 30)
     );
 
     const response = {

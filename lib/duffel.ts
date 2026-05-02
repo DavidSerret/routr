@@ -34,7 +34,7 @@ export async function searchFlights(params: DuffelSearchParams) {
     },
   };
 
-  const res = await fetch(`${DUFFEL_BASE}/air/offer_requests?return_offers=true`, {
+  const res = await fetch(`${DUFFEL_BASE}/air/offer_requests?return_offers=true&limit=50`, {
     method: 'POST',
     headers: duffelHeaders(),
     body: JSON.stringify(body),
