@@ -69,3 +69,22 @@ function parseDuration(duration: string): number {
   if (!match) return 0;
   return parseInt(match[1] ?? '0') * 60 + parseInt(match[2] ?? '0');
 }
+
+export function isValidOffer(offer: any): boolean {
+  const firstSlice = offer.slices?.[0];
+  const firstSegment = firstSlice?.segments?.[0];
+  if (!firstSegment) return false;
+
+  // Drop Duffel test airline
+  if ((firstSegment.marketing_carrier?.iata_code ?? '') === 'ZZ') return false;
+
+  // Drop midnight departures — always bad test data
+  if ((firstSegment.departing_at ?? '').includes('T00:00:00')) return false;
+
+  // Drop implausible direct flights over 13h (European departures can't reach
+  // Southeast Asia non-stop; real max is ~12h30m LHR→SIN)
+  const isDirectFlight = firstSlice.segments.length === 1;
+  if (isDirectFlight && firstSlice.duration && parseDuration(firstSlice.duration) > 13 * 60) return false;
+
+  return true;
+}

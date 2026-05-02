@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchFlights } from '@/lib/duffel';
-import { normalizeDuffelOffer } from '@/lib/duffelNormalizer';
+import { normalizeDuffelOffer, isValidOffer } from '@/lib/duffelNormalizer';
 import { assignBadges } from '@/lib/utils';
 import { getCache, setCache, TTL } from '@/lib/cache';
 
@@ -37,15 +37,15 @@ export async function GET(req: NextRequest) {
 
     const result = await searchFlights({ slices, passengers, cabin_class: cabin });
 
-    // Normalize all offers
-    const normalized = (result.offers ?? []).map(normalizeDuffelOffer);
+    // Normalize all offers, filtering ghost/test flights first
+    const normalized = (result.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer);
 
-    // Deduplicate by outbound flight number + departure time (minute precision).
-    // For round-trips Duffel returns every outbound×inbound combination as a separate
-    // offer. We keep only the cheapest combination for each distinct outbound flight.
+    // Deduplicate by physical flight fingerprint (origin+dest+departure+duration).
+    // Catches codeshares (QR0138 vs MH9242 on the same physical aircraft) and also
+    // handles round-trip combinatorial explosion (many inbound×outbound combinations).
     const seen = new Map<string, typeof normalized[0]>();
     for (const offer of normalized) {
-      const key = `${offer.flightNumber}-${offer.departureAt.slice(0, 16)}`;
+      const key = `${offer.origin}-${offer.destination}-${offer.departureAt.slice(0, 16)}-${offer.duration}`;
       const existing = seen.get(key);
       if (!existing || offer.price < existing.price) {
         seen.set(key, offer);
