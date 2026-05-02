@@ -40,6 +40,7 @@ export async function deleteCache(key: string): Promise<void> {
 export const TTL = {
   AIRPORTS: 60 * 60 * 24 * 30,
   CALENDAR: 60 * 60 * 6,
+  CALENDAR_PRICES: 60 * 60 * 2,
   FLIGHTS: 60 * 15,
   MONTHLY: 60 * 60 * 24,
   POPULAR: 60 * 60 * 24,

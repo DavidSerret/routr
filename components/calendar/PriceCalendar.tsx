@@ -1,17 +1,29 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, isBefore, startOfDay, parseISO } from 'date-fns';
-import { usePriceCalendar } from '@/hooks/usePriceCalendar';
-import { formatPrice } from '@/lib/utils';
-import { cn } from '@/lib/utils';
-import type { Airport } from '@/lib/types';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  isBefore,
+  startOfDay,
+  addMonths,
+} from 'date-fns';
+import { FlightCard } from '@/components/results/FlightCard';
+import { cn, formatPrice } from '@/lib/utils';
+import type { Airport, FlightOffer, TripType } from '@/lib/types';
 
 interface PriceCalendarProps {
   origin: Airport | null;
   destination: Airport | null;
-  onDateSelect?: (date: string) => void;
+  tripType?: TripType;
+  initialOutboundDate?: string;
+  initialReturnDate?: string;
+  adults?: number;
+  onDatesSelected?: (outboundDate: string, returnDate: string) => void;
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -24,167 +36,339 @@ function getPriceColor(price: number, min: number, max: number): string {
   return 'text-[#ef4444]';
 }
 
-function getPriceBg(price: number, min: number, max: number): string {
-  if (max === min) return 'bg-[#22c55e]/10';
-  const ratio = (price - min) / (max - min);
-  if (ratio < 0.33) return 'bg-[#22c55e]/10';
-  if (ratio < 0.66) return 'bg-[#f59e0b]/10';
-  return 'bg-[#ef4444]/10';
-}
-
-export function PriceCalendar({ origin, destination, onDateSelect }: PriceCalendarProps) {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { days, loading, updatedAt, fetch } = usePriceCalendar();
+export function PriceCalendar({
+  origin,
+  destination,
+  tripType = 'round-trip',
+  initialOutboundDate,
+  initialReturnDate,
+  adults = 1,
+  onDatesSelected,
+}: PriceCalendarProps) {
   const today = startOfDay(new Date());
+  const isRoundTrip = tripType === 'round-trip';
 
+  const [mode, setMode] = useState<'outbound' | 'return'>(
+    initialOutboundDate && isRoundTrip ? 'return' : 'outbound',
+  );
+  const [outboundDate, setOutboundDate] = useState<string | null>(initialOutboundDate ?? null);
+  const [returnDate, setReturnDate] = useState<string | null>(initialReturnDate ?? null);
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
+
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    if (initialOutboundDate) {
+      const parts = initialOutboundDate.split('-').map(Number);
+      return new Date(parts[0], parts[1] - 1, 1);
+    }
+    return startOfMonth(new Date());
+  });
+
+  const [outboundPrices, setOutboundPrices] = useState<Record<string, number>>({});
+  const [returnPrices, setReturnPrices] = useState<Record<string, number>>({});
+  const [currency, setCurrency] = useState('EUR');
+  const [outboundLoading, setOutboundLoading] = useState(false);
+  const [returnLoading, setReturnLoading] = useState(false);
+
+  const [previewFlight, setPreviewFlight] = useState<FlightOffer | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const monthStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+
+  // Fetch prices for both directions whenever month or airports change
   useEffect(() => {
     if (!origin || !destination) return;
-    fetch(origin.iataCode, destination.iataCode, format(currentMonth, 'yyyy-MM'));
-  }, [origin, destination, currentMonth, fetch]);
 
-  const priceMap = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const d of days) {
-      if (d.price !== null) map.set(d.date, d.price);
+    setOutboundPrices({});
+    setReturnPrices({});
+    setOutboundLoading(true);
+    setReturnLoading(true);
+
+    const baseParams = `month=${monthStr}&adults=${adults}`;
+
+    fetch(`/api/calendar-prices?origin=${origin.iataCode}&destination=${destination.iataCode}&${baseParams}`)
+      .then(r => r.json())
+      .then(data => {
+        setOutboundPrices(data.dayPrices ?? {});
+        setCurrency(data.currency ?? 'EUR');
+      })
+      .catch(() => {})
+      .finally(() => setOutboundLoading(false));
+
+    fetch(`/api/calendar-prices?origin=${destination.iataCode}&destination=${origin.iataCode}&${baseParams}`)
+      .then(r => r.json())
+      .then(data => setReturnPrices(data.dayPrices ?? {}))
+      .catch(() => {})
+      .finally(() => setReturnLoading(false));
+  }, [origin, destination, monthStr, adults]);
+
+  // Fetch preview flight when both dates are confirmed
+  useEffect(() => {
+    if (!outboundDate || !returnDate || !origin || !destination || !isRoundTrip) {
+      setPreviewFlight(null);
+      return;
     }
-    return map;
-  }, [days]);
+    setPreviewLoading(true);
+    fetch(
+      `/api/flights?origin=${origin.iataCode}&destination=${destination.iataCode}` +
+      `&date=${outboundDate}&return_date=${returnDate}&tripType=round-trip&adults=${adults}`,
+    )
+      .then(r => r.json())
+      .then(data => setPreviewFlight(data.flights?.[0] ?? null))
+      .catch(() => setPreviewFlight(null))
+      .finally(() => setPreviewLoading(false));
+  }, [outboundDate, returnDate, origin, destination, adults, isRoundTrip]);
 
-  const { minPrice, maxPrice, currency } = useMemo(() => {
-    const prices = days.filter(d => d.price !== null).map(d => d.price as number);
-    return {
-      minPrice: Math.min(...prices),
-      maxPrice: Math.max(...prices),
-      currency: days[0]?.currency ?? 'EUR',
-    };
-  }, [days]);
+  const activePrices = mode === 'return' ? returnPrices : outboundPrices;
+  const isLoading = mode === 'return' ? returnLoading : outboundLoading;
+
+  const { minPrice, maxPrice } = useMemo(() => {
+    const prices = Object.values(activePrices);
+    if (!prices.length) return { minPrice: 0, maxPrice: 0 };
+    return { minPrice: Math.min(...prices), maxPrice: Math.max(...prices) };
+  }, [activePrices]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start, end });
-    const startWeekday = (getDay(start) + 6) % 7; // Monday-first
+    const startWeekday = (getDay(start) + 6) % 7; // Monday-first (0=Mon)
     return { days, startWeekday };
   }, [currentMonth]);
 
-  function prevMonth() {
-    setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-  }
-
-  function nextMonth() {
-    setCurrentMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+  function handleDayClick(dateStr: string) {
+    if (!isRoundTrip) {
+      setOutboundDate(dateStr);
+      onDatesSelected?.(dateStr, '');
+      return;
+    }
+    if (mode === 'outbound') {
+      setOutboundDate(dateStr);
+      setReturnDate(null);
+      setPreviewFlight(null);
+      setMode('return');
+    } else {
+      if (outboundDate && dateStr <= outboundDate) {
+        // Clicked before outbound — reset outbound to this date
+        setOutboundDate(dateStr);
+        setReturnDate(null);
+        setPreviewFlight(null);
+        setMode('return');
+      } else {
+        setReturnDate(dateStr);
+      }
+    }
   }
 
   const canGoPrev = !isBefore(startOfMonth(currentMonth), startOfMonth(today));
+  const bothSelected = !!(outboundDate && returnDate && isRoundTrip);
+
+  // The end of the hover/selection range
+  const rangeEndDate = isRoundTrip && mode === 'return' ? (hoveredDate ?? returnDate) : null;
 
   return (
-    <div className="rounded-xl border border-[#2a2a3a] bg-[#111118] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a3a]">
-        <h3 className="font-display font-semibold text-white">
-          {format(currentMonth, 'MMMM yyyy')}
-        </h3>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={prevMonth}
-            disabled={!canGoPrev}
-            className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
-              canGoPrev ? 'text-[#8888aa] hover:text-white hover:bg-[#1a1a24]' : 'text-[#2a2a3a] cursor-not-allowed'
-            )}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={nextMonth}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-[#8888aa] hover:text-white hover:bg-[#1a1a24] transition-colors"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-[#2a2a3a] bg-[#111118] overflow-hidden">
+
+        {/* Header: month nav + loading spinner */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a3a]">
+          <div className="flex items-center gap-3">
+            <h3 className="font-display font-semibold text-white">
+              {format(currentMonth, 'MMMM yyyy')}
+            </h3>
+            {isLoading && <Loader2 className="h-4 w-4 text-[#6366f1] animate-spin" />}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCurrentMonth(m => addMonths(m, -1))}
+              disabled={!canGoPrev}
+              className={cn(
+                'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+                canGoPrev
+                  ? 'text-[#8888aa] hover:text-white hover:bg-[#1a1a24]'
+                  : 'text-[#2a2a3a] cursor-not-allowed',
+              )}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrentMonth(m => addMonths(m, 1))}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-[#8888aa] hover:text-white hover:bg-[#1a1a24] transition-colors"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className="p-3">
-        <div className="grid grid-cols-7 gap-1 mb-1">
-          {WEEKDAYS.map(d => (
-            <div key={d} className="text-center text-xs font-medium text-[#55556a] py-1">{d}</div>
-          ))}
-        </div>
+        {/* Round-trip date selection chips */}
+        {isRoundTrip && (
+          <div className="flex items-center gap-2 px-4 pt-3 pb-1 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { setMode('outbound'); setReturnDate(null); setPreviewFlight(null); }}
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                mode === 'outbound'
+                  ? 'bg-[#6366f1] text-white'
+                  : 'bg-[#1a1a24] text-[#a5b4fc] hover:bg-[#6366f1]/20',
+              )}
+            >
+              ↗ {outboundDate ?? 'Select departure'}
+            </button>
+            <span className="text-[#2a2a3a] text-sm">→</span>
+            <button
+              type="button"
+              onClick={() => outboundDate && setMode('return')}
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                mode === 'return'
+                  ? 'bg-[#6366f1] text-white'
+                  : returnDate
+                    ? 'bg-[#1a1a24] text-[#a5b4fc] hover:bg-[#6366f1]/20'
+                    : 'bg-[#1a1a24] text-[#55556a]',
+              )}
+            >
+              ↙ {returnDate ?? 'Select return'}
+            </button>
+          </div>
+        )}
 
-        <div className="grid grid-cols-7 gap-1">
-          {Array.from({ length: calendarDays.startWeekday }).map((_, i) => (
-            <div key={`empty-${i}`} />
-          ))}
+        {/* Calendar grid */}
+        <div className="p-3">
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 mb-1">
+            {WEEKDAYS.map(d => (
+              <div key={d} className="text-center text-xs font-medium text-[#55556a] py-1">{d}</div>
+            ))}
+          </div>
 
-          {calendarDays.days.map(day => {
-            const dateStr = format(day, 'yyyy-MM-dd');
-            const price = priceMap.get(dateStr) ?? null;
-            const isPast = isBefore(day, today);
-            const isCurrentMonth = isSameMonth(day, currentMonth);
+          {/* Day cells — no gap so range backgrounds are seamless */}
+          <div className="grid grid-cols-7">
+            {Array.from({ length: calendarDays.startWeekday }).map((_, i) => (
+              <div key={`empty-${i}`} className="h-14" />
+            ))}
 
-            if (!isCurrentMonth) return <div key={dateStr} />;
+            {calendarDays.days.map((day, dayIndex) => {
+              const dateStr = format(day, 'yyyy-MM-dd');
+              const col = (calendarDays.startWeekday + dayIndex) % 7;
+              const isPast = isBefore(day, today);
+              const isBeforeOutbound =
+                isRoundTrip && mode === 'return' && outboundDate != null && dateStr < outboundDate;
+              const disabled = isPast || isBeforeOutbound;
 
-            if (isPast) {
-              return (
-                <div
-                  key={dateStr}
-                  className="flex flex-col items-center justify-center rounded-lg py-2 opacity-30"
-                >
-                  <span className="text-sm text-[#55556a]">{format(day, 'd')}</span>
+              const price = disabled ? null : (activePrices[dateStr] ?? null);
+              const isOutboundSelected = dateStr === outboundDate;
+              const isReturnSelected = dateStr === returnDate;
+              const isSelected = isOutboundSelected || isReturnSelected;
+
+              // Range highlight between outbound and hovered/return date
+              let inRange = false;
+              let isRangeStart = false;
+              let isRangeEnd = false;
+
+              if (outboundDate && rangeEndDate) {
+                const [rStart, rEnd] =
+                  outboundDate <= rangeEndDate
+                    ? [outboundDate, rangeEndDate]
+                    : [rangeEndDate, outboundDate];
+                if (dateStr >= rStart && dateStr <= rEnd) {
+                  inRange = true;
+                  isRangeStart = dateStr === rStart;
+                  isRangeEnd = dateStr === rEnd;
+                }
+              }
+
+              // Snake corners: round at true range endpoints OR at row edges
+              const shouldRoundLeft = isRangeStart || (inRange && col === 0);
+              const shouldRoundRight = isRangeEnd || (inRange && col === 6);
+
+              const outerClass = cn(
+                'h-14 relative',
+                inRange && cn(
+                  'bg-[#6366f1]/15',
+                  shouldRoundLeft && 'rounded-l-lg',
+                  shouldRoundRight && 'rounded-r-lg',
+                ),
+              );
+
+              const innerContent = (
+                <div className={cn(
+                  'relative mx-0.5 h-full flex flex-col items-center justify-center gap-0.5',
+                  isSelected && 'rounded-lg bg-[#6366f1]',
+                )}>
+                  <span className={cn(
+                    'text-sm font-medium leading-none',
+                    disabled ? 'text-[#2a2a3a]' : 'text-white',
+                  )}>
+                    {format(day, 'd')}
+                  </span>
+                  {disabled ? (
+                    <span className="text-[10px] text-[#1a1a24]">—</span>
+                  ) : isLoading ? (
+                    <div className="h-3 w-8 rounded bg-[#1a1a24] animate-pulse" />
+                  ) : price !== null ? (
+                    <span className={cn(
+                      'text-[10px] font-mono font-bold',
+                      isSelected ? 'text-white/80' : getPriceColor(price, minPrice, maxPrice),
+                    )}>
+                      {formatPrice(price, currency)}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-[#2a2a3a]">—</span>
+                  )}
                 </div>
               );
-            }
 
-            if (loading) {
-              return (
-                <div key={dateStr} className="flex flex-col items-center justify-center rounded-lg py-2 bg-[#1a1a24] animate-pulse h-14" />
-              );
-            }
+              if (disabled) {
+                return (
+                  <div key={dateStr} className={cn(outerClass, 'opacity-30')}>
+                    {innerContent}
+                  </div>
+                );
+              }
 
-            if (price === null) {
               return (
-                <div
+                <button
                   key={dateStr}
-                  className="flex flex-col items-center justify-center rounded-lg py-2 h-14"
+                  type="button"
+                  onClick={() => handleDayClick(dateStr)}
+                  onMouseEnter={() => mode === 'return' && setHoveredDate(dateStr)}
+                  onMouseLeave={() => setHoveredDate(null)}
+                  className={cn(outerClass, 'transition-opacity duration-100', !isSelected && 'hover:opacity-75')}
                 >
-                  <span className="text-sm text-[#55556a]">{format(day, 'd')}</span>
-                  <span className="text-xs text-[#2a2a3a] mt-0.5">—</span>
-                </div>
+                  {innerContent}
+                </button>
               );
-            }
+            })}
+          </div>
+        </div>
 
-            const colorClass = getPriceColor(price, minPrice, maxPrice);
-            const bgClass = getPriceBg(price, minPrice, maxPrice);
-
-            return (
-              <button
-                key={dateStr}
-                type="button"
-                onClick={() => onDateSelect?.(dateStr)}
-                className={cn(
-                  'flex flex-col items-center justify-center rounded-lg py-2 h-14 transition-all duration-150',
-                  bgClass,
-                  'hover:ring-1 hover:ring-[#6366f1] hover:scale-105'
-                )}
-              >
-                <span className="text-sm font-medium text-white">{format(day, 'd')}</span>
-                <span className={cn('text-xs font-mono-price font-bold mt-0.5', colorClass)}>
-                  {formatPrice(price, currency)}
-                </span>
-              </button>
-            );
-          })}
+        <div className="px-4 py-2 border-t border-[#2a2a3a]">
+          <p className="text-xs text-[#55556a]">Prices are indicative. Confirm availability before booking.</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-4 py-2 border-t border-[#2a2a3a]">
-        <Info className="h-3 w-3 text-[#55556a] flex-shrink-0" />
-        <p className="text-xs text-[#55556a]">
-          Prices are indicative and may vary at time of booking.
-          {updatedAt && ` Updated ${format(parseISO(updatedAt), 'HH:mm')}.`}
-        </p>
-      </div>
+      {/* Preview cheapest flight when both dates are selected */}
+      {bothSelected && (
+        <div className="space-y-3">
+          {previewLoading ? (
+            <div className="rounded-xl border border-[#2a2a3a] bg-[#111118] p-8 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 text-[#6366f1] animate-spin" />
+            </div>
+          ) : previewFlight ? (
+            <FlightCard flight={previewFlight} tripType="round-trip" />
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => onDatesSelected?.(outboundDate!, returnDate!)}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-[#6366f1]/40 bg-[#6366f1]/10 px-4 py-3 text-sm font-medium text-[#a5b4fc] hover:bg-[#6366f1]/20 transition-colors"
+          >
+            View all flights for {outboundDate} → {returnDate} →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

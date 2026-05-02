@@ -23,9 +23,11 @@ export interface DuffelSearchParams {
   slices: DuffelSlice[];
   passengers: { type: 'adult' | 'child' | 'infant_without_seat' }[];
   cabin_class: 'economy' | 'premium_economy' | 'business' | 'first';
+  limit?: number;
 }
 
 export async function searchFlights(params: DuffelSearchParams) {
+  const limit = params.limit ?? 50;
   const body = {
     data: {
       cabin_class: params.cabin_class,
@@ -34,7 +36,7 @@ export async function searchFlights(params: DuffelSearchParams) {
     },
   };
 
-  const res = await fetch(`${DUFFEL_BASE}/air/offer_requests?return_offers=true&limit=50`, {
+  const res = await fetch(`${DUFFEL_BASE}/air/offer_requests?return_offers=true&limit=${limit}`, {
     method: 'POST',
     headers: duffelHeaders(),
     body: JSON.stringify(body),

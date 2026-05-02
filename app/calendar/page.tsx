@@ -13,7 +13,7 @@ export default function CalendarPage() {
   const [origin, setOrigin] = useState<Airport | null>(null);
   const [destination, setDestination] = useState<Airport | null>(null);
 
-  function handleDateSelect(date: string) {
+  function handleDatesSelected(date: string) {
     if (!origin || !destination) return;
     const params = new URLSearchParams({
       origins: origin.iataCode,
@@ -65,7 +65,8 @@ export default function CalendarPage() {
         <PriceCalendar
           origin={origin}
           destination={destination}
-          onDateSelect={handleDateSelect}
+          tripType="one-way"
+          onDatesSelected={handleDatesSelected}
         />
       )}
     </div>

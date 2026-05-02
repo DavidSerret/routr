@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchForm } from '@/components/search/SearchForm';
 import { ResultsHeader } from '@/components/results/ResultsHeader';
 import { ResultsList } from '@/components/results/ResultsList';
@@ -16,6 +16,7 @@ import { Navbar } from '@/components/ui/Navbar';
 
 function ResultsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const {
     flights,
     openJawCombinations,
@@ -63,6 +64,15 @@ function ResultsContent() {
   const children = parseInt(searchParams.get('children') ?? '0', 10);
   const infants = parseInt(searchParams.get('infants') ?? '0', 10);
   const tripType = (searchParams.get('tripType') ?? 'round-trip') as TripType;
+
+  const handleDatesSelected = useCallback((outDate: string, retDate: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (outDate) params.set('date', outDate);
+    if (retDate) { params.set('return', retDate); params.set('tripType', 'round-trip'); }
+    else params.delete('return');
+    router.push(`/results?${params.toString()}`);
+    setView('list');
+  }, [searchParams, router]);
 
   const doSearch = useCallback(() => {
     if (!origins.length || !destinations.length || !departureDate) return;
@@ -142,6 +152,11 @@ function ResultsContent() {
             <PriceCalendar
               origin={origins[0] ?? null}
               destination={destinations[0] ?? null}
+              tripType={tripType}
+              initialOutboundDate={departureDate || undefined}
+              initialReturnDate={returnDate}
+              adults={adults}
+              onDatesSelected={handleDatesSelected}
             />
           ) : (
             <ResultsList
