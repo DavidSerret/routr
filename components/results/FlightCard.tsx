@@ -48,27 +48,25 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
       'rounded-xl border bg-[#111118] p-4 transition-colors duration-200',
       expired ? 'border-[#2a2a3a] opacity-75' : 'border-[#2a2a3a] hover:border-[#6366f1]/40'
     )}>
-      {/* Row 1: Airline + Price */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <AirlineLogo carrierCode={flight.airline} carrierName={flight.airlineName} size={32} />
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-white truncate">{flight.airlineName}</p>
-            <p className="text-xs font-mono text-[#55556a]">{flight.flightNumber}</p>
-          </div>
+      {/* Top: badge (left) + price (right) */}
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="pt-0.5">
+          {flight.badges.length > 0 && <FlightBadgeChip badge={flight.badges[0]} />}
         </div>
-        <div className="flex-shrink-0 text-right">
-          <p className="text-2xl font-bold font-mono text-white">{formatPrice(flight.price, flight.currency)}</p>
-          {flight.badges.length > 0 && (
-            <div className="mt-1">
-              <FlightBadgeChip badge={flight.badges[0]} />
-            </div>
-          )}
-        </div>
+        <p className="text-2xl font-bold font-mono text-white flex-shrink-0">
+          {formatPrice(flight.price, flight.currency)}
+        </p>
       </div>
 
-      {/* Row 2: Route — horizontal on sm+, stacked on mobile */}
-      <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
+      {/* Airline header row */}
+      <div className="flex items-center gap-2 mb-3">
+        <AirlineLogo carrierCode={flight.airline} carrierName={flight.airlineName} size={20} />
+        <span className="text-xs text-[#8888aa] truncate">{flight.airlineName}</span>
+        <span className="text-xs font-mono text-[#55556a] flex-shrink-0">{flight.flightNumber}</span>
+      </div>
+
+      {/* Route — horizontal on sm+, stacked on mobile */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
         {/* Departure */}
         <div className="flex items-baseline gap-2 sm:block sm:w-[5.5rem] sm:flex-shrink-0">
           <p className="text-2xl font-bold font-mono text-white leading-none">{formatTime(flight.departureAt)}</p>
@@ -98,7 +96,7 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
         </div>
       </div>
 
-      {/* Segment expand (connecting flights only) */}
+      {/* Layover details (connecting flights only) */}
       {flight.segments && flight.segments.length > 1 && (
         <div className="mt-2">
           <button
@@ -124,8 +122,8 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
         </div>
       )}
 
-      {/* Row 3: Bottom bar — baggage + return info + CTA */}
-      <div className="mt-3 pt-3 border-t border-[#2a2a3a] flex flex-wrap items-center justify-between gap-3">
+      {/* Bottom bar: baggage + return info + CTA */}
+      <div className="mt-4 pt-3 border-t border-[#2a2a3a] flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className={cn('flex items-center gap-1', flight.carryOnIncluded ? 'text-[#22c55e]' : 'text-[#55556a]')}>
             <BriefcaseBusiness className="h-3.5 w-3.5" />
