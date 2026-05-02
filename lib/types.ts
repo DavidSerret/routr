@@ -111,6 +111,14 @@ export interface FilterState {
   departureTimeMin: number;
   departureTimeMax: number;
   avoidRedEye: boolean;
+  cabinClass: 'economy' | 'premium_economy' | 'business' | 'first';
+}
+
+export interface OpenJawCombination {
+  outbound: FlightOffer;
+  return: FlightOffer;
+  totalPrice: number;
+  isOpenJaw: boolean;
 }
 
 export interface MonthlyPrice {

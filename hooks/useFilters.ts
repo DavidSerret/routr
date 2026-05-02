@@ -5,19 +5,27 @@ import type { FlightOffer } from '@/lib/types';
 import { DEFAULT_FILTER_STATE } from '@/lib/constants';
 import { getMinutesFromMidnight } from '@/lib/utils';
 
-export function useFilters(flights: FlightOffer[]) {
-  const [filters, setFilters] = useState<typeof DEFAULT_FILTER_STATE>(DEFAULT_FILTER_STATE);
+type FilterState = typeof DEFAULT_FILTER_STATE;
 
-  const updateFilter = useCallback(<K extends keyof typeof DEFAULT_FILTER_STATE>(
+export function useFilters(
+  flights: FlightOffer[],
+  initialCabinClass: 'economy' | 'premium_economy' | 'business' | 'first' = 'economy'
+) {
+  const [filters, setFilters] = useState<FilterState>(() => ({
+    ...DEFAULT_FILTER_STATE,
+    cabinClass: initialCabinClass,
+  }));
+
+  const updateFilter = useCallback(<K extends keyof FilterState>(
     key: K,
-    value: typeof DEFAULT_FILTER_STATE[K]
+    value: FilterState[K]
   ) => {
     setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
   const resetFilters = useCallback(() => {
-    setFilters(DEFAULT_FILTER_STATE);
-  }, []);
+    setFilters({ ...DEFAULT_FILTER_STATE, cabinClass: initialCabinClass });
+  }, [initialCabinClass]);
 
   const filtered = useMemo((): FlightOffer[] => {
     return flights.filter(flight => {
@@ -50,6 +58,7 @@ export function useFilters(flights: FlightOffer[]) {
     if (filters.stops.length > 0) count++;
     if (filters.airlines.length > 0) count++;
     if (filters.avoidRedEye) count++;
+    if (filters.cabinClass !== 'economy') count++;
     return count;
   }, [filters]);
 

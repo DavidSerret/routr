@@ -8,9 +8,8 @@ import { TripTypeToggle } from './TripTypeToggle';
 import { AirportMultiSelect } from './AirportMultiSelect';
 import { DateRangePicker } from './DateRangePicker';
 import { PassengerSelector } from './PassengerSelector';
-import { CabinClassSelect } from './CabinClassSelect';
 import { cn } from '@/lib/utils';
-import type { Airport, TripType, CabinClass } from '@/lib/types';
+import type { Airport, TripType } from '@/lib/types';
 
 interface SearchFormProps {
   compact?: boolean;
@@ -22,7 +21,6 @@ interface SearchFormProps {
     adults?: number;
     children?: number;
     infants?: number;
-    cabinClass?: CabinClass;
     tripType?: TripType;
   };
 }
@@ -41,7 +39,6 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
   const [adults, setAdults] = useState(initialValues?.adults ?? 1);
   const [children, setChildren] = useState(initialValues?.children ?? 0);
   const [infants, setInfants] = useState(initialValues?.infants ?? 0);
-  const [cabinClass, setCabinClass] = useState<CabinClass>(initialValues?.cabinClass ?? 'ECONOMY');
   const [error, setError] = useState<string | null>(null);
 
   const swapAirports = useCallback(() => {
@@ -53,7 +50,11 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
     if (origins.length === 0) return 'Please select an origin airport';
     if (destinations.length === 0) return 'Please select a destination airport';
     if (!departureDate) return 'Please select a departure date';
-    if (tripType === 'round-trip' && !returnDate) return 'Please select a return date';
+    if ((tripType === 'round-trip' || tripType === 'multi-city') && !returnDate) {
+      return tripType === 'multi-city'
+        ? 'Please select a return date for open-jaw search'
+        : 'Please select a return date';
+    }
     return null;
   }
 
@@ -70,11 +71,10 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
       destinationsData: encodeURIComponent(JSON.stringify(destinations)),
       date: format(departureDate!, 'yyyy-MM-dd'),
       adults: String(adults),
-      cabin: cabinClass,
       tripType,
     });
 
-    if (tripType === 'round-trip' && returnDate) {
+    if ((tripType === 'round-trip' || tripType === 'multi-city') && returnDate) {
       params.set('return', format(returnDate, 'yyyy-MM-dd'));
     }
     if (children > 0) params.set('children', String(children));
@@ -83,13 +83,23 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
     router.push(`/results?${params.toString()}`);
   }
 
+  const isMultiCity = tripType === 'multi-city';
+  const isSingleAirportMultiCity = isMultiCity && origins.length <= 1 && destinations.length <= 1;
+
   return (
     <form onSubmit={handleSearch} noValidate>
       <div className={cn(
         'rounded-2xl border border-[#2a2a3a] bg-[#111118] p-4 shadow-2xl',
         compact ? 'space-y-3' : 'space-y-4'
       )}>
-        <TripTypeToggle value={tripType} onChange={setTripType} />
+        <div className="space-y-1.5">
+          <TripTypeToggle value={tripType} onChange={setTripType} />
+          {isMultiCity && (
+            <p className="text-xs text-[#8888aa]">
+              Find cheaper routes by flying into and out of different airports
+            </p>
+          )}
+        </div>
 
         <div className="flex items-end gap-2">
           <AirportMultiSelect
@@ -118,25 +128,28 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
           />
         </div>
 
+        {isSingleAirportMultiCity && (
+          <p className="text-xs text-[#8888aa]">
+            Add multiple airports to unlock open-jaw search
+          </p>
+        )}
+
         <DateRangePicker
           departureDate={departureDate}
           returnDate={returnDate}
           onDepartureDateChange={setDepartureDate}
           onReturnDateChange={setReturnDate}
-          isRoundTrip={tripType === 'round-trip'}
+          isRoundTrip={tripType !== 'one-way'}
         />
 
-        <div className="grid grid-cols-2 gap-2">
-          <PassengerSelector
-            adults={adults}
-            children={children}
-            infants={infants}
-            onAdultsChange={setAdults}
-            onChildrenChange={setChildren}
-            onInfantsChange={setInfants}
-          />
-          <CabinClassSelect value={cabinClass} onChange={setCabinClass} />
-        </div>
+        <PassengerSelector
+          adults={adults}
+          children={children}
+          infants={infants}
+          onAdultsChange={setAdults}
+          onChildrenChange={setChildren}
+          onInfantsChange={setInfants}
+        />
 
         {error && (
           <p className="text-sm text-[#ef4444]" role="alert">{error}</p>
@@ -147,7 +160,7 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
           className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#6366f1] font-medium text-white transition-colors hover:bg-[#4f52d4] focus:outline-none focus:ring-2 focus:ring-[#6366f1] focus:ring-offset-2 focus:ring-offset-[#111118]"
         >
           <Search className="h-4 w-4" />
-          Search flights
+          {isMultiCity ? 'Search open-jaw combinations' : 'Search flights'}
         </button>
       </div>
     </form>

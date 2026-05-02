@@ -16,8 +16,27 @@ import { Navbar } from '@/components/ui/Navbar';
 
 function ResultsContent() {
   const searchParams = useSearchParams();
-  const { flights, loading, error, updatedAt, totalCount, hasExactDateResults, requestedDate, search } = useFlightSearch();
-  const { filters, filtered, updateFilter, resetFilters, activeFilterCount } = useFilters(flights);
+  const {
+    flights,
+    openJawCombinations,
+    searchMode,
+    loading,
+    error,
+    updatedAt,
+    totalCount,
+    hasExactDateResults,
+    requestedDate,
+    search,
+  } = useFlightSearch();
+
+  const cabinFromUrl = (searchParams.get('cabin')?.toLowerCase() ?? 'economy') as
+    'economy' | 'premium_economy' | 'business' | 'first';
+
+  const { filters, filtered, updateFilter, resetFilters, activeFilterCount } = useFilters(
+    flights,
+    cabinFromUrl
+  );
+
   const [sortBy, setSortBy] = useState<SortOption>('best');
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [showFilters, setShowFilters] = useState(false);
@@ -43,7 +62,6 @@ function ResultsContent() {
   const adults = parseInt(searchParams.get('adults') ?? '1', 10);
   const children = parseInt(searchParams.get('children') ?? '0', 10);
   const infants = parseInt(searchParams.get('infants') ?? '0', 10);
-  const cabinClass = (searchParams.get('cabin') ?? 'ECONOMY') as CabinClass;
   const tripType = (searchParams.get('tripType') ?? 'round-trip') as TripType;
 
   const doSearch = useCallback(() => {
@@ -59,11 +77,11 @@ function ResultsContent() {
       children,
       infants,
       infantSeatType: 'lap',
-      cabinClass,
+      cabinClass: filters.cabinClass.toUpperCase() as CabinClass,
       flexibleDates: false,
       flexibleDaysRange: 1,
     });
-  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, filters.cabinClass]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     doSearch();
@@ -76,7 +94,7 @@ function ResultsContent() {
       <div className="mb-6">
         <SearchForm
           compact
-          initialValues={{ origins, destinations, departureDate, returnDate, adults, children, infants, cabinClass, tripType }}
+          initialValues={{ origins, destinations, departureDate, returnDate, adults, children, infants, tripType }}
         />
       </div>
 
@@ -109,7 +127,7 @@ function ResultsContent() {
             <div className="mb-4">
               <ResultsHeader
                 totalCount={totalCount}
-                filteredCount={filtered.length}
+                filteredCount={searchMode === 'open-jaw' ? openJawCombinations.length : filtered.length}
                 sortBy={sortBy}
                 onSortChange={setSortBy}
                 updatedAt={updatedAt}
@@ -133,6 +151,8 @@ function ResultsContent() {
               tripType={tripType}
               hasExactDateResults={hasExactDateResults}
               requestedDate={requestedDate}
+              openJawCombinations={openJawCombinations}
+              searchMode={searchMode}
             />
           )}
         </div>

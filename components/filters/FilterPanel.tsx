@@ -134,6 +134,27 @@ export function FilterPanel({ filters, updateFilter, resetFilters, activeFilterC
           </div>
         </Section>
 
+        <Section title="Cabin class">
+          <div className="flex flex-col gap-2">
+            {(['economy', 'premium_economy', 'business', 'first'] as const).map(cabin => (
+              <label key={cabin} className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="radio"
+                  name="cabin"
+                  value={cabin}
+                  checked={filters.cabinClass === cabin}
+                  onChange={() => updateFilter('cabinClass', cabin)}
+                  className="accent-[#6366f1] h-3.5 w-3.5"
+                />
+                <span className="text-sm text-[#8888aa] group-hover:text-white transition-colors">
+                  {cabin === 'premium_economy' ? 'Premium Economy' :
+                   cabin.charAt(0).toUpperCase() + cabin.slice(1)}
+                </span>
+              </label>
+            ))}
+          </div>
+        </Section>
+
         <Section title="Departure time" defaultOpen={false}>
           <div className="space-y-3">
             <Slider

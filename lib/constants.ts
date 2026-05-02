@@ -75,6 +75,7 @@ export const DEFAULT_FILTER_STATE = {
   departureTimeMin: 0,
   departureTimeMax: 23 * 60 + 59,
   avoidRedEye: false,
+  cabinClass: 'economy' as 'economy' | 'premium_economy' | 'business' | 'first',
 };
 
 export const SORT_OPTIONS = [

@@ -71,7 +71,9 @@
       "Bash(node scripts/build.mjs)",
       "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -File | Where-Object {$_.Name -match \"\\(route\\\\.ts|page\\\\.tsx|FlightCard|ResultsList|SearchForm\\)\" } | Select-Object -ExpandProperty FullName)",
       "Bash(Get-Content .env.local)",
-      "Bash(Select-String -Pattern \"DUFFEL\" -Quiet)"
+      "Bash(Select-String -Pattern \"DUFFEL\" -Quiet)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -Filter \"*FilterPanel*\")",
+      "Bash(Select-Object -ExpandProperty FullName)"
     ]
   }
 }

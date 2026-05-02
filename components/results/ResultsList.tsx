@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Plane } from 'lucide-react';
+import { Info, Plane } from 'lucide-react';
 import { FlightCard } from './FlightCard';
 import { FlightCardSkeleton } from './FlightCardSkeleton';
+import { OpenJawCard } from './OpenJawCard';
 import { formatDate } from '@/lib/utils';
-import type { FlightOffer, TripType } from '@/lib/types';
+import type { FlightOffer, OpenJawCombination, TripType } from '@/lib/types';
 import type { SortOption } from '@/lib/constants';
 
 interface ResultsListProps {
@@ -15,6 +16,8 @@ interface ResultsListProps {
   tripType: TripType;
   hasExactDateResults?: boolean | null;
   requestedDate?: string | null;
+  openJawCombinations?: OpenJawCombination[];
+  searchMode?: 'standard' | 'open-jaw';
 }
 
 function sortFlights(flights: FlightOffer[], sortBy: SortOption): FlightOffer[] {
@@ -39,14 +42,58 @@ function sortFlights(flights: FlightOffer[], sortBy: SortOption): FlightOffer[] 
   });
 }
 
-export function ResultsList({ flights, loading, sortBy, tripType, hasExactDateResults, requestedDate }: ResultsListProps) {
+export function ResultsList({
+  flights,
+  loading,
+  sortBy,
+  tripType,
+  hasExactDateResults,
+  requestedDate,
+  openJawCombinations = [],
+  searchMode = 'standard',
+}: ResultsListProps) {
   const sorted = useMemo(() => sortFlights(flights, sortBy), [flights, sortBy]);
+  const sortedOpenJaw = useMemo(
+    () => [...openJawCombinations].sort((a, b) => a.totalPrice - b.totalPrice),
+    [openJawCombinations]
+  );
 
   if (loading) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <FlightCardSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
+
+  if (searchMode === 'open-jaw') {
+    if (sortedOpenJaw.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="rounded-full bg-[#1a1a24] p-4 mb-4">
+            <Plane className="h-8 w-8 text-[#55556a]" />
+          </div>
+          <h3 className="font-display text-lg font-semibold text-white mb-2">No open-jaw routes found</h3>
+          <p className="text-sm text-[#8888aa] max-w-sm">
+            Try different airports or dates. Not all airport combinations have direct connections.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <div className="rounded-lg border border-[#6366f1]/30 bg-[#6366f1]/10 px-4 py-3 flex items-start gap-2 text-sm text-[#a5b4fc]">
+          <Info className="h-4 w-4 flex-shrink-0 mt-px" />
+          <span>
+            These are <strong>separate tickets</strong>. Missed connections are your responsibility.
+            Prices shown are the sum of two independent bookings.
+          </span>
+        </div>
+        {sortedOpenJaw.map((combo, i) => (
+          <OpenJawCard key={`${combo.outbound.id}-${combo.return.id}-${i}`} combination={combo} />
         ))}
       </div>
     );
