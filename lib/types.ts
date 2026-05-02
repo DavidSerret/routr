@@ -36,6 +36,16 @@ export type AirportSearchResult = AirportResult | AirportGroupResult;
 
 export type FlightBadge = 'cheapest' | 'fastest' | 'best-value';
 
+export interface FlightSegment {
+  flightNumber: string;
+  origin: string;
+  destination: string;
+  departureAt: string;
+  arrivalAt: string;
+  airline: string;
+  aircraft: string | null;
+}
+
 export interface FlightOffer {
   id: string;
   price: number;
@@ -43,15 +53,21 @@ export interface FlightOffer {
   airline: string;
   airlineName: string;
   airlineLogo: string;
-  flightNumber: number;
+  flightNumber: string;
   departureAt: string;
+  arrivalAt: string;
   returnAt: string | null;
   expiresAt: string;
   stops: number;
   origin: string;
   destination: string;
+  duration: number | null;
   bookingUrl: string;
-  source: 'travelpayouts';
+  baggageIncluded: boolean;
+  carryOnIncluded: boolean;
+  aircraft: string | null;
+  segments: FlightSegment[];
+  source: 'duffel' | 'travelpayouts';
   badges: FlightBadge[];
   updatedAt: string;
 }

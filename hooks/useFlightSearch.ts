@@ -29,21 +29,24 @@ export function useFlightSearch() {
   const search = useCallback(async (params: SearchParams) => {
     setState(s => ({ ...s, loading: true, error: null }));
 
-    const body = {
-      originLocationCode: params.origins.map(a => a.iataCode),
-      destinationLocationCode: params.destinations.map(a => a.iataCode),
-      departureDate: params.departureDate,
-      returnDate: params.returnDate,
-      currencyCode: 'EUR',
-    };
+    const origin = params.origins[0]?.iataCode ?? '';
+    const destination = params.destinations[0]?.iataCode ?? '';
+
+    const sp = new URLSearchParams({
+      origin,
+      destination,
+      date: params.departureDate,
+      tripType: params.tripType,
+      adults: String(params.adults),
+      children: String(params.children),
+      cabin: params.cabinClass.toLowerCase(),
+    });
+    if (params.tripType === 'round-trip' && params.returnDate) {
+      sp.set('return_date', params.returnDate);
+    }
 
     try {
-      const res = await fetch('/api/flights', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
+      const res = await fetch(`/api/flights?${sp.toString()}`);
       const data = await res.json();
 
       if (!res.ok) {
@@ -58,7 +61,7 @@ export function useFlightSearch() {
         totalCount: data.totalCount ?? 0,
         currencyCode: data.currencyCode ?? 'EUR',
         hasExactDateResults: data.hasExactDateResults ?? null,
-        requestedDate: data.requestedDate ?? null,
+        requestedDate: params.departureDate,
       });
     } catch (err) {
       setState(s => ({

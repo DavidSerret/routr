@@ -1,8 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import type { FlightOffer } from "./types";
-import { airlineLogoUrl, bookingUrl } from "./travelpayouts";
-
+import type { FlightOffer } from '@/lib/types';
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
@@ -63,46 +61,6 @@ export function getMinutesFromMidnight(isoDatetime: string): number {
 
 export function isExpired(expiresAt: string): boolean {
   return new Date(expiresAt) < new Date();
-}
-
-type TicketInput = {
-  price: number;
-  airline: string;
-  flight_number: number;
-  departure_at: string;
-  return_at: string | null;
-  expires_at: string;
-  transfers: number;
-};
-
-export function normalizeTpFlightOffer(
-  raw: TicketInput,
-  origin: string,
-  destination: string,
-  currency: string,
-  airlineNames: Map<string, string>
-): FlightOffer {
-  const id = `${raw.airline}-${raw.flight_number}-${raw.departure_at}`;
-  const name = airlineNames.get(raw.airline) ?? raw.airline;
-  return {
-    id,
-    price: raw.price,
-    currency,
-    airline: raw.airline,
-    airlineName: name,
-    airlineLogo: airlineLogoUrl(raw.airline),
-    flightNumber: raw.flight_number,
-    departureAt: raw.departure_at,
-    returnAt: raw.return_at,
-    expiresAt: raw.expires_at,
-    stops: raw.transfers,
-    origin,
-    destination,
-    bookingUrl: bookingUrl(origin, destination, raw.departure_at),
-    source: 'travelpayouts',
-    badges: [],
-    updatedAt: new Date().toISOString(),
-  };
 }
 
 export function assignBadges(flights: FlightOffer[]): FlightOffer[] {

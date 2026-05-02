@@ -1,143 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { searchFlights } from '@/lib/duffel';
+import { normalizeDuffelOffer } from '@/lib/duffelNormalizer';
+import { assignBadges } from '@/lib/utils';
 import { getCache, setCache, TTL } from '@/lib/cache';
-import { fetchCheapTickets, fetchMonthlyPrices } from '@/lib/travelpayouts';
-import { normalizeTpFlightOffer, assignBadges } from '@/lib/utils';
-import type { FlightOffer } from '@/lib/types';
 
-interface FlightSearchBody {
-  originLocationCode: string | string[];
-  destinationLocationCode: string | string[];
-  departureDate: string;
-  returnDate?: string;
-  currencyCode?: string;
-}
+export async function GET(req: NextRequest) {
+  const p = req.nextUrl.searchParams;
 
-async function fetchFlightsForPair(
-  origin: string,
-  destination: string,
-  params: FlightSearchBody
-): Promise<FlightOffer[]> {
-  const currency = params.currencyCode ?? 'EUR';
-  const cacheKey = [
-    'tp:flights:v2',
-    origin,
-    destination,
-    params.departureDate.slice(0, 7),
-    params.returnDate?.slice(0, 7) ?? 'ow',
-    currency,
-  ].join(':');
+  const origin = p.get('origin');
+  const destination = p.get('destination');
+  const date = p.get('date');
+  const returnDate = p.get('return_date');
+  const tripType = p.get('tripType') ?? 'one-way';
+  const adults = Math.max(1, parseInt(p.get('adults') ?? '1', 10));
+  const children = Math.max(0, parseInt(p.get('children') ?? '0', 10));
+  const cabin = (p.get('cabin') ?? 'economy') as 'economy' | 'premium_economy' | 'business' | 'first';
 
-  const cached = await getCache<FlightOffer[]>(cacheKey);
-  if (cached) return cached;
-
-  // Fetch cheap (grouped by stop-count) and monthly (one best per month) in parallel
-  const [cheapTickets, monthlyTickets] = await Promise.all([
-    fetchCheapTickets(origin, destination, params.departureDate, params.returnDate, currency).catch(() => []),
-    fetchMonthlyPrices(origin, destination, currency).catch(() => []),
-  ]);
-
-  const airlineNames = new Map<string, string>();
-
-  // Deduplicate by id across both sources
-  const seen = new Set<string>();
-  const flights: FlightOffer[] = [];
-
-  for (const t of [...cheapTickets, ...monthlyTickets]) {
-    const offer = normalizeTpFlightOffer(t, origin, destination, currency, airlineNames);
-    if (!seen.has(offer.id)) {
-      seen.add(offer.id);
-      flights.push(offer);
-    }
+  if (!origin || !destination || !date) {
+    return NextResponse.json({ error: 'Missing required params: origin, destination, date' }, { status: 400 });
   }
 
-  flights.sort((a, b) => a.price - b.price);
-  await setCache(cacheKey, flights, TTL.FLIGHTS);
-  return flights;
-}
-
-export async function POST(req: NextRequest) {
-  let body: FlightSearchBody;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-  }
-
-  const origins = Array.isArray(body.originLocationCode)
-    ? body.originLocationCode
-    : [body.originLocationCode];
-  const destinations = Array.isArray(body.destinationLocationCode)
-    ? body.destinationLocationCode
-    : [body.destinationLocationCode];
-
-  if (!origins.length || !destinations.length || !body.departureDate) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-  }
-
-  const pairs: [string, string][] = [];
-  for (const o of origins) {
-    for (const d of destinations) {
-      if (o !== d) pairs.push([o, d]);
-    }
-  }
+  const cacheKey = `duffel:v1:${origin}:${destination}:${date}:${returnDate ?? 'ow'}:${adults}:${children}:${cabin}`;
+  const cached = await getCache<object>(cacheKey);
+  if (cached) return NextResponse.json({ ...cached, cached: true });
 
   try {
-    const results = await Promise.all(
-      pairs.map(([o, d]) => fetchFlightsForPair(o, d, body).catch(() => [] as FlightOffer[]))
+    const passengers = [
+      ...Array(adults).fill({ type: 'adult' as const }),
+      ...Array(children).fill({ type: 'child' as const }),
+    ];
+
+    const slices = [{ origin, destination, departure_date: date }];
+    if (tripType === 'round-trip' && returnDate) {
+      slices.push({ origin: destination, destination: origin, departure_date: returnDate });
+    }
+
+    const result = await searchFlights({ slices, passengers, cabin_class: cabin });
+
+    const flights = assignBadges(
+      (result.offers ?? [])
+        .map(normalizeDuffelOffer)
+        .sort((a: { price: number }, b: { price: number }) => a.price - b.price)
     );
 
-    const seen = new Set<string>();
-    const merged: FlightOffer[] = [];
-    for (const batch of results) {
-      for (const flight of batch) {
-        if (!seen.has(flight.id)) {
-          seen.add(flight.id);
-          merged.push(flight);
-        }
-      }
-    }
-
-    // Date filtering: prefer flights within ±3 days of the requested departure date
-    const requested = new Date(body.departureDate + 'T00:00:00');
-    const minDate = new Date(requested);
-    const maxDate = new Date(requested);
-    minDate.setDate(minDate.getDate() - 3);
-    maxDate.setDate(maxDate.getDate() + 3);
-
-    const exact = merged.filter(f => {
-      const d = new Date(f.departureAt);
-      return d >= minDate && d <= maxDate;
-    });
-
-    const hasExactDateResults = exact.length > 0;
-    const toShow = hasExactDateResults ? exact : merged;
-
-    // Sort by proximity to requested date first, then by price
-    toShow.sort((a, b) => {
-      const dA = Math.abs(new Date(a.departureAt).getTime() - requested.getTime());
-      const dB = Math.abs(new Date(b.departureAt).getTime() - requested.getTime());
-      if (dA !== dB) return dA - dB;
-      return a.price - b.price;
-    });
-
-    const withBadges = assignBadges(toShow);
-
-    const message = withBadges.length === 0
-      ? 'No recent price data for this route. Try nearby airports or a different month.'
-      : undefined;
-
-    return NextResponse.json({
-      flights: withBadges,
+    const response = {
+      flights,
       cached: false,
       updatedAt: new Date().toISOString(),
-      totalCount: withBadges.length,
-      currencyCode: body.currencyCode ?? 'EUR',
-      hasExactDateResults,
-      requestedDate: body.departureDate,
-      ...(message ? { message } : {}),
-    });
+      totalCount: flights.length,
+      currencyCode: flights[0]?.currency ?? 'EUR',
+    };
+
+    if (flights.length > 0) {
+      await setCache(cacheKey, response, TTL.FLIGHTS);
+    }
+
+    return NextResponse.json(response);
   } catch (err) {
-    console.error('Flight search error:', err);
-    return NextResponse.json({ error: 'Search failed. Please try again.' }, { status: 500 });
+    console.error('Duffel search error:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Flight search failed. Please try again.' }, { status: 500 });
   }
 }

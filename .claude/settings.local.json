@@ -69,7 +69,9 @@
       "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/cheap?origin=MAD&destination=BCN&depart_date=2026-05&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\")",
       "Bash(curl -s \"https://api.travelpayouts.com/v1/prices/monthly?origin=MAD&destination=BCN&currency=EUR&token=8f72169e3a43851fdde43522f9748e9b\")",
       "Bash(node scripts/build.mjs)",
-      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -File | Where-Object {$_.Name -match \"\\(route\\\\.ts|page\\\\.tsx|FlightCard|ResultsList|SearchForm\\)\" } | Select-Object -ExpandProperty FullName)"
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -File | Where-Object {$_.Name -match \"\\(route\\\\.ts|page\\\\.tsx|FlightCard|ResultsList|SearchForm\\)\" } | Select-Object -ExpandProperty FullName)",
+      "Bash(Get-Content .env.local)",
+      "Bash(Select-String -Pattern \"DUFFEL\" -Quiet)"
     ]
   }
 }
