@@ -57,6 +57,12 @@ export interface FlightOffer {
   departureAt: string;
   arrivalAt: string;
   returnAt: string | null;
+  returnArrivalAt: string | null;
+  returnDuration: number | null;
+  returnStops: number | null;
+  returnAirline: string | null;
+  returnAirlineName: string | null;
+  returnFlightNumber: string | null;
   expiresAt: string;
   stops: number;
   origin: string;

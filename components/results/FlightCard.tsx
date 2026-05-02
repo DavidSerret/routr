@@ -12,16 +12,6 @@ interface FlightCardProps {
   tripType: TripType;
 }
 
-function dayOffset(departureAt: string, arrivalAt: string): string {
-  const dep = new Date(departureAt).toDateString();
-  const arr = new Date(arrivalAt).toDateString();
-  if (dep === arr) return '';
-  const diffDays = Math.round(
-    (new Date(arrivalAt).getTime() - new Date(departureAt).getTime()) / 86400000
-  );
-  return diffDays > 0 ? `+${diffDays}` : String(diffDays);
-}
-
 function StopsLine({ stops }: { stops: number }) {
   return (
     <div className="relative w-full flex items-center">
@@ -38,10 +28,63 @@ function StopsLine({ stops }: { stops: number }) {
   );
 }
 
+interface LegBlockProps {
+  label?: string;
+  labelColor?: string;
+  airline: string;
+  airlineName: string;
+  flightNumber: string;
+  departureAt: string;
+  arrivalAt: string;
+  origin: string;
+  destination: string;
+  stops: number;
+  duration: number | null;
+}
+
+function LegBlock({ label, labelColor, airline, airlineName, flightNumber, departureAt, arrivalAt, origin, destination, stops, duration }: LegBlockProps) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2.5">
+        {label && (
+          <span className={cn('text-xs font-mono font-bold uppercase tracking-wider flex-shrink-0', labelColor)}>
+            {label}
+          </span>
+        )}
+        <AirlineLogo carrierCode={airline} carrierName={airlineName} size={20} />
+        <span className="text-xs text-[#8888aa] truncate">{airlineName}</span>
+        <span className="text-xs font-mono text-[#55556a] flex-shrink-0">{flightNumber}</span>
+      </div>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
+        <div className="flex items-baseline gap-2 sm:block sm:w-[5.5rem] sm:flex-shrink-0">
+          <p className="text-2xl font-bold font-mono text-white leading-none">{formatTime(departureAt)}</p>
+          <p className="text-lg font-mono font-semibold text-[#6366f1] leading-none sm:mt-1">{origin}</p>
+          <p className="text-xs text-[#55556a] sm:mt-1">{formatDateShort(departureAt)}</p>
+        </div>
+        <div className="flex-1 flex flex-col items-center gap-1 min-w-0 my-1 sm:my-0">
+          <StopsLine stops={stops} />
+          <p className={cn('text-xs text-center whitespace-nowrap', stops === 0 ? 'text-[#22c55e]' : 'text-[#f59e0b]')}>
+            {getStopLabel(stops)}
+            {duration ? ` · ${formatDuration(duration)}` : ''}
+          </p>
+        </div>
+        <div className="flex items-baseline gap-2 sm:block sm:w-[5.5rem] sm:flex-shrink-0 sm:text-right">
+          <p className="text-2xl font-bold font-mono text-white leading-none">{formatTime(arrivalAt)}</p>
+          <p className="text-lg font-mono font-semibold text-[#6366f1] leading-none sm:mt-1">{destination}</p>
+          <p className="text-xs text-[#55556a] sm:mt-1">{formatDateShort(arrivalAt)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FlightCard({ flight, tripType }: FlightCardProps) {
   const [showSegments, setShowSegments] = useState(false);
   const expired = isExpired(flight.expiresAt);
-  const offset = flight.arrivalAt ? dayOffset(flight.departureAt, flight.arrivalAt) : '';
+
+  const hasReturn = tripType !== 'one-way' && flight.returnAt && flight.returnArrivalAt;
+  const outboundLabel = hasReturn ? '↗ OUT' : undefined;
+  const outboundLabelColor = 'text-[#6366f1]';
 
   return (
     <article className={cn(
@@ -58,45 +101,22 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
         </p>
       </div>
 
-      {/* Airline header row */}
-      <div className="flex items-center gap-2 mb-3">
-        <AirlineLogo carrierCode={flight.airline} carrierName={flight.airlineName} size={20} />
-        <span className="text-xs text-[#8888aa] truncate">{flight.airlineName}</span>
-        <span className="text-xs font-mono text-[#55556a] flex-shrink-0">{flight.flightNumber}</span>
-      </div>
+      {/* Outbound leg */}
+      <LegBlock
+        label={outboundLabel}
+        labelColor={outboundLabelColor}
+        airline={flight.airline}
+        airlineName={flight.airlineName}
+        flightNumber={flight.flightNumber}
+        departureAt={flight.departureAt}
+        arrivalAt={flight.arrivalAt}
+        origin={flight.origin}
+        destination={flight.destination}
+        stops={flight.stops}
+        duration={flight.duration}
+      />
 
-      {/* Route — horizontal on sm+, stacked on mobile */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:gap-3 gap-2">
-        {/* Departure */}
-        <div className="flex items-baseline gap-2 sm:block sm:w-[5.5rem] sm:flex-shrink-0">
-          <p className="text-2xl font-bold font-mono text-white leading-none">{formatTime(flight.departureAt)}</p>
-          <p className="text-lg font-mono font-semibold text-[#6366f1] leading-none sm:mt-1">{flight.origin}</p>
-          <p className="text-xs text-[#55556a] sm:mt-1">{formatDateShort(flight.departureAt)}</p>
-        </div>
-
-        {/* Center: route line */}
-        <div className="flex-1 flex flex-col items-center gap-1 min-w-0 my-1 sm:my-0">
-          <StopsLine stops={flight.stops} />
-          <p className={cn('text-xs text-center whitespace-nowrap', flight.stops === 0 ? 'text-[#22c55e]' : 'text-[#f59e0b]')}>
-            {getStopLabel(flight.stops)}
-            {flight.duration ? ` · ${formatDuration(flight.duration)}` : ''}
-          </p>
-        </div>
-
-        {/* Arrival */}
-        <div className="flex items-baseline gap-2 sm:block sm:w-[5.5rem] sm:flex-shrink-0 sm:text-right">
-          <p className="text-2xl font-bold font-mono text-white leading-none">
-            {flight.arrivalAt ? formatTime(flight.arrivalAt) : '—'}
-            {offset && <span className="text-sm font-normal text-[#f59e0b] ml-1">{offset}</span>}
-          </p>
-          <p className="text-lg font-mono font-semibold text-[#6366f1] leading-none sm:mt-1">{flight.destination}</p>
-          {flight.arrivalAt && (
-            <p className="text-xs text-[#55556a] sm:mt-1">{formatDateShort(flight.arrivalAt)}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Layover details (connecting flights only) */}
+      {/* Layover details (connecting outbound flights) */}
       {flight.segments && flight.segments.length > 1 && (
         <div className="mt-2">
           <button
@@ -122,7 +142,27 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
         </div>
       )}
 
-      {/* Bottom bar: baggage + return info + CTA */}
+      {/* Return leg (round-trip) */}
+      {hasReturn && (
+        <>
+          <div className="my-4 border-t border-dashed border-[#2a2a3a]" />
+          <LegBlock
+            label="↙ RET"
+            labelColor="text-[#a5b4fc]"
+            airline={flight.returnAirline ?? flight.airline}
+            airlineName={flight.returnAirlineName ?? flight.airlineName}
+            flightNumber={flight.returnFlightNumber ?? ''}
+            departureAt={flight.returnAt!}
+            arrivalAt={flight.returnArrivalAt!}
+            origin={flight.destination}
+            destination={flight.origin}
+            stops={flight.returnStops ?? 0}
+            duration={flight.returnDuration}
+          />
+        </>
+      )}
+
+      {/* Bottom bar */}
       <div className="mt-4 pt-3 border-t border-[#2a2a3a] flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className={cn('flex items-center gap-1', flight.carryOnIncluded ? 'text-[#22c55e]' : 'text-[#55556a]')}>
@@ -133,12 +173,6 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
             <Luggage className="h-3.5 w-3.5" />
             {flight.baggageIncluded ? 'Checked bag' : 'No checked bag'}
           </span>
-          {tripType !== 'one-way' && flight.returnAt && (
-            <span className="text-[#8888aa] flex items-center gap-1">
-              <span>↩</span>
-              <span>Return: {formatDateShort(flight.returnAt)} · {formatTime(flight.returnAt)}</span>
-            </span>
-          )}
         </div>
         <a
           href={flight.bookingUrl}

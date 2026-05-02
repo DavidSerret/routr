@@ -2,9 +2,8 @@ import type { FlightOffer, FlightSegment } from './types';
 
 export function normalizeDuffelOffer(offer: any): FlightOffer {
   const firstSlice = offer.slices[0];
-  const lastSlice = offer.slices[offer.slices.length - 1];
   const firstSegment = firstSlice.segments[0];
-  const lastSegment = lastSlice.segments[lastSlice.segments.length - 1];
+  const lastOutboundSegment = firstSlice.segments[firstSlice.segments.length - 1];
 
   const stops = firstSlice.segments.length - 1;
 
@@ -19,7 +18,7 @@ export function normalizeDuffelOffer(offer: any): FlightOffer {
   const duration = firstSlice.duration ? parseDuration(firstSlice.duration) : null;
 
   const origin = firstSegment.origin?.iata_code ?? firstSegment.origin?.id ?? '';
-  const destination = lastSegment.destination?.iata_code ?? lastSegment.destination?.id ?? '';
+  const destination = lastOutboundSegment.destination?.iata_code ?? lastOutboundSegment.destination?.id ?? '';
   const date = firstSegment.departing_at?.slice(0, 10) ?? '';
 
   const bookingUrl = `https://www.google.com/travel/flights?q=flights+from+${origin}+to+${destination}+on+${date}`;
@@ -34,6 +33,13 @@ export function normalizeDuffelOffer(offer: any): FlightOffer {
     aircraft: seg.aircraft?.name ?? null,
   }));
 
+  // Return slice (round-trip)
+  const returnSlice = offer.slices.length > 1 ? offer.slices[1] : null;
+  const returnFirstSeg = returnSlice?.segments[0] ?? null;
+  const returnLastSeg = returnSlice
+    ? returnSlice.segments[returnSlice.segments.length - 1]
+    : null;
+
   return {
     id: offer.id,
     price: parseFloat(offer.total_amount),
@@ -43,9 +49,15 @@ export function normalizeDuffelOffer(offer: any): FlightOffer {
     airlineLogo: `https://pics.avs.io/200/200/${primaryAirline}.png`,
     flightNumber,
     departureAt: firstSegment.departing_at,
-    arrivalAt: lastSegment.arriving_at,
-    returnAt: offer.slices.length > 1
-      ? offer.slices[1].segments[0].departing_at
+    arrivalAt: lastOutboundSegment.arriving_at,
+    returnAt: returnFirstSeg?.departing_at ?? null,
+    returnArrivalAt: returnLastSeg?.arriving_at ?? null,
+    returnDuration: returnSlice?.duration ? parseDuration(returnSlice.duration) : null,
+    returnStops: returnSlice ? returnSlice.segments.length - 1 : null,
+    returnAirline: returnFirstSeg?.marketing_carrier?.iata_code ?? null,
+    returnAirlineName: returnFirstSeg?.marketing_carrier?.name ?? null,
+    returnFlightNumber: returnFirstSeg
+      ? `${returnFirstSeg.marketing_carrier?.iata_code ?? ''}${returnFirstSeg.marketing_carrier_flight_number ?? ''}`
       : null,
     expiresAt: offer.expires_at,
     stops,
