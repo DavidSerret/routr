@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import {
   format,
@@ -16,6 +16,19 @@ import { FlightCard } from '@/components/results/FlightCard';
 import { cn, formatPrice } from '@/lib/utils';
 import type { Airport, FlightOffer, TripType } from '@/lib/types';
 
+interface DayPrice {
+  price: number;
+  currency: string;
+  airline: string;
+  stops: number;
+}
+
+// Per-day entry: null = loaded with no price, 'loading' = in-flight, DayPrice = loaded with price
+type DayEntry = DayPrice | 'loading' | null;
+
+// Keyed by YYYY-MM, each value is a per-date map
+type MonthPrices = Record<string, Record<string, DayEntry>>;
+
 interface PriceCalendarProps {
   origin: Airport | null;
   destination: Airport | null;
@@ -28,11 +41,35 @@ interface PriceCalendarProps {
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function getPriceColor(price: number, min: number, max: number): string {
-  if (max === min) return 'text-[#22c55e]';
-  const ratio = (price - min) / (max - min);
-  if (ratio < 0.33) return 'text-[#22c55e]';
-  if (ratio < 0.66) return 'text-[#f59e0b]';
+function toMonthStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function datesForMonth(monthStr: string, todayStr: string): string[] {
+  const [year, monthNum] = monthStr.split('-').map(Number);
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+  const dates: string[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+    if (dateStr >= todayStr) dates.push(dateStr);
+  }
+  return dates;
+}
+
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getPriceColor(price: number, allPrices: number[]): string {
+  if (allPrices.length === 0) return 'text-[#22c55e]';
+  const min = Math.min(...allPrices);
+  const max = Math.max(...allPrices);
+  const range = max - min;
+  if (range === 0) return 'text-[#22c55e]';
+  const ratio = (price - min) / range;
+  if (ratio <= 0.33) return 'text-[#22c55e]';
+  if (ratio <= 0.66) return 'text-[#f59e0b]';
   return 'text-[#ef4444]';
 }
 
@@ -63,45 +100,76 @@ export function PriceCalendar({
     return startOfMonth(new Date());
   });
 
-  const [outboundPrices, setOutboundPrices] = useState<Record<string, number>>({});
-  const [returnPrices, setReturnPrices] = useState<Record<string, number>>({});
-  const [currency, setCurrency] = useState('EUR');
-  const [outboundLoading, setOutboundLoading] = useState(false);
-  const [returnLoading, setReturnLoading] = useState(false);
+  // All month prices kept in memory — navigating back is instant
+  // Key: `${direction}:${monthStr}`, Value: per-date map
+  const [allMonthPrices, setAllMonthPrices] = useState<Record<string, Record<string, DayEntry>>>({});
 
   const [previewFlight, setPreviewFlight] = useState<FlightOffer | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  const monthStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+  // Track which month+direction combos are already loading to avoid duplicate fetches
+  const loadingKeys = useRef(new Set<string>());
 
-  // Fetch prices for both directions whenever month or airports change
+  const monthStr = toMonthStr(currentMonth);
+
+  const loadMonthPrices = useCallback(
+    (orig: string, dest: string, month: string, direction: 'out' | 'ret') => {
+      const key = `${direction}:${month}:${orig}:${dest}`;
+      if (loadingKeys.current.has(key)) return;
+      loadingKeys.current.add(key);
+
+      const today0 = todayStr();
+      const dates = datesForMonth(month, today0);
+      if (dates.length === 0) return;
+
+      // Mark all days as loading immediately
+      const initial: Record<string, DayEntry> = {};
+      dates.forEach(d => { initial[d] = 'loading'; });
+      setAllMonthPrices(prev => ({
+        ...prev,
+        [key]: { ...(prev[key] ?? {}), ...initial },
+      }));
+
+      // Fire all requests in parallel — each is an independent serverless invocation
+      dates.forEach(date => {
+        const params = new URLSearchParams({
+          origin: orig,
+          destination: dest,
+          date,
+          adults: String(adults),
+        });
+        fetch(`/api/day-price?${params}`)
+          .then(r => r.json())
+          .then((data: { price?: number | null; currency?: string; airline?: string; stops?: number }) => {
+            setAllMonthPrices(prev => ({
+              ...prev,
+              [key]: {
+                ...(prev[key] ?? {}),
+                [date]: data.price != null
+                  ? { price: data.price, currency: data.currency ?? 'EUR', airline: data.airline ?? '', stops: data.stops ?? 0 }
+                  : null,
+              },
+            }));
+          })
+          .catch(() => {
+            setAllMonthPrices(prev => ({
+              ...prev,
+              [key]: { ...(prev[key] ?? {}), [date]: null },
+            }));
+          });
+      });
+    },
+    [adults],
+  );
+
+  // Load prices when airports or month changes
   useEffect(() => {
     if (!origin || !destination) return;
+    loadMonthPrices(origin.iataCode, destination.iataCode, monthStr, 'out');
+    loadMonthPrices(destination.iataCode, origin.iataCode, monthStr, 'ret');
+  }, [origin, destination, monthStr, loadMonthPrices]);
 
-    setOutboundPrices({});
-    setReturnPrices({});
-    setOutboundLoading(true);
-    setReturnLoading(true);
-
-    const baseParams = `month=${monthStr}&adults=${adults}`;
-
-    fetch(`/api/calendar-prices?origin=${origin.iataCode}&destination=${destination.iataCode}&${baseParams}`)
-      .then(r => r.json())
-      .then(data => {
-        setOutboundPrices(data.dayPrices ?? {});
-        setCurrency(data.currency ?? 'EUR');
-      })
-      .catch(() => {})
-      .finally(() => setOutboundLoading(false));
-
-    fetch(`/api/calendar-prices?origin=${destination.iataCode}&destination=${origin.iataCode}&${baseParams}`)
-      .then(r => r.json())
-      .then(data => setReturnPrices(data.dayPrices ?? {}))
-      .catch(() => {})
-      .finally(() => setReturnLoading(false));
-  }, [origin, destination, monthStr, adults]);
-
-  // Fetch preview flight when both dates are confirmed
+  // Fetch preview flight when both dates confirmed
   useEffect(() => {
     if (!outboundDate || !returnDate || !origin || !destination || !isRoundTrip) {
       setPreviewFlight(null);
@@ -118,20 +186,29 @@ export function PriceCalendar({
       .finally(() => setPreviewLoading(false));
   }, [outboundDate, returnDate, origin, destination, adults, isRoundTrip]);
 
-  const activePrices = mode === 'return' ? returnPrices : outboundPrices;
-  const isLoading = mode === 'return' ? returnLoading : outboundLoading;
+  // Current direction prices for the displayed month
+  const outKey = origin && destination ? `out:${monthStr}:${origin.iataCode}:${destination.iataCode}` : null;
+  const retKey = origin && destination ? `ret:${monthStr}:${destination.iataCode}:${origin.iataCode}` : null;
 
-  const { minPrice, maxPrice } = useMemo(() => {
-    const prices = Object.values(activePrices);
-    if (!prices.length) return { minPrice: 0, maxPrice: 0 };
-    return { minPrice: Math.min(...prices), maxPrice: Math.max(...prices) };
+  const activePrices = (mode === 'return' ? retKey : outKey)
+    ? (allMonthPrices[mode === 'return' ? retKey! : outKey!] ?? {})
+    : {};
+
+  // Is any day still loading?
+  const isLoading = Object.values(activePrices).some(v => v === 'loading');
+
+  // All resolved prices for color scale (recomputed as prices arrive)
+  const resolvedPrices = useMemo(() => {
+    return Object.values(activePrices)
+      .filter((v): v is DayPrice => v !== null && v !== 'loading')
+      .map(v => v.price);
   }, [activePrices]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start, end });
-    const startWeekday = (getDay(start) + 6) % 7; // Monday-first (0=Mon)
+    const startWeekday = (getDay(start) + 6) % 7; // Monday-first
     return { days, startWeekday };
   }, [currentMonth]);
 
@@ -148,7 +225,6 @@ export function PriceCalendar({
       setMode('return');
     } else {
       if (outboundDate && dateStr <= outboundDate) {
-        // Clicked before outbound — reset outbound to this date
         setOutboundDate(dateStr);
         setReturnDate(null);
         setPreviewFlight(null);
@@ -161,15 +237,13 @@ export function PriceCalendar({
 
   const canGoPrev = !isBefore(startOfMonth(currentMonth), startOfMonth(today));
   const bothSelected = !!(outboundDate && returnDate && isRoundTrip);
-
-  // The end of the hover/selection range
   const rangeEndDate = isRoundTrip && mode === 'return' ? (hoveredDate ?? returnDate) : null;
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-[#2a2a3a] bg-[#111118] overflow-hidden">
 
-        {/* Header: month nav + loading spinner */}
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a3a]">
           <div className="flex items-center gap-3">
             <h3 className="font-display font-semibold text-white">
@@ -201,7 +275,7 @@ export function PriceCalendar({
           </div>
         </div>
 
-        {/* Round-trip date selection chips */}
+        {/* Round-trip date chips */}
         {isRoundTrip && (
           <div className="flex items-center gap-2 px-4 pt-3 pb-1 flex-wrap">
             <button
@@ -234,16 +308,15 @@ export function PriceCalendar({
           </div>
         )}
 
-        {/* Calendar grid */}
+        {/* Grid */}
         <div className="p-3">
-          {/* Weekday headers */}
           <div className="grid grid-cols-7 mb-1">
             {WEEKDAYS.map(d => (
               <div key={d} className="text-center text-xs font-medium text-[#55556a] py-1">{d}</div>
             ))}
           </div>
 
-          {/* Day cells — no gap so range backgrounds are seamless */}
+          {/* No gap — seamless range band */}
           <div className="grid grid-cols-7">
             {Array.from({ length: calendarDays.startWeekday }).map((_, i) => (
               <div key={`empty-${i}`} className="h-14" />
@@ -257,12 +330,16 @@ export function PriceCalendar({
                 isRoundTrip && mode === 'return' && outboundDate != null && dateStr < outboundDate;
               const disabled = isPast || isBeforeOutbound;
 
-              const price = disabled ? null : (activePrices[dateStr] ?? null);
+              const entry = disabled ? null : (activePrices[dateStr] ?? null);
+              const isEntryLoading = entry === 'loading';
+              const price = entry !== null && entry !== 'loading' ? entry.price : null;
+              const currency = entry !== null && entry !== 'loading' ? entry.currency : 'EUR';
+
               const isOutboundSelected = dateStr === outboundDate;
               const isReturnSelected = dateStr === returnDate;
               const isSelected = isOutboundSelected || isReturnSelected;
 
-              // Range highlight between outbound and hovered/return date
+              // Snake range
               let inRange = false;
               let isRangeStart = false;
               let isRangeEnd = false;
@@ -279,7 +356,6 @@ export function PriceCalendar({
                 }
               }
 
-              // Snake corners: round at true range endpoints OR at row edges
               const shouldRoundLeft = isRangeStart || (inRange && col === 0);
               const shouldRoundRight = isRangeEnd || (inRange && col === 6);
 
@@ -303,14 +379,15 @@ export function PriceCalendar({
                   )}>
                     {format(day, 'd')}
                   </span>
+
                   {disabled ? (
                     <span className="text-[10px] text-[#1a1a24]">—</span>
-                  ) : isLoading ? (
+                  ) : isEntryLoading ? (
                     <div className="h-3 w-8 rounded bg-[#1a1a24] animate-pulse" />
                   ) : price !== null ? (
                     <span className={cn(
                       'text-[10px] font-mono font-bold',
-                      isSelected ? 'text-white/80' : getPriceColor(price, minPrice, maxPrice),
+                      isSelected ? 'text-white/80' : getPriceColor(price, resolvedPrices),
                     )}>
                       {formatPrice(price, currency)}
                     </span>
@@ -349,7 +426,7 @@ export function PriceCalendar({
         </div>
       </div>
 
-      {/* Preview cheapest flight when both dates are selected */}
+      {/* Preview card when both dates selected */}
       {bothSelected && (
         <div className="space-y-3">
           {previewLoading ? (
