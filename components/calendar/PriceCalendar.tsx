@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import {
   format,
@@ -23,11 +23,7 @@ interface DayPrice {
   stops: number;
 }
 
-// Per-day entry: null = loaded with no price, 'loading' = in-flight, DayPrice = loaded with price
 type DayEntry = DayPrice | 'loading' | null;
-
-// Keyed by YYYY-MM, each value is a per-date map
-type MonthPrices = Record<string, Record<string, DayEntry>>;
 
 interface PriceCalendarProps {
   origin: Airport | null;
@@ -40,29 +36,31 @@ interface PriceCalendarProps {
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MAX_CONCURRENT = 5;
 
 function toMonthStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function datesForMonth(monthStr: string, todayStr: string): string[] {
-  const [year, monthNum] = monthStr.split('-').map(Number);
-  const daysInMonth = new Date(year, monthNum, 0).getDate();
-  const dates: string[] = [];
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
-    if (dateStr >= todayStr) dates.push(dateStr);
-  }
-  return dates;
-}
-
-function todayStr(): string {
+function currentDateStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function datesForMonth(monthStr: string): string[] {
+  const [year, monthNum] = monthStr.split('-').map(Number);
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+  const today = currentDateStr();
+  const dates: string[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${monthStr}-${String(d).padStart(2, '0')}`;
+    if (dateStr >= today) dates.push(dateStr);
+  }
+  return dates;
+}
+
 function getPriceColor(price: number, allPrices: number[]): string {
-  if (allPrices.length === 0) return 'text-[#22c55e]';
+  if (allPrices.length < 2) return 'text-[#22c55e]';
   const min = Math.min(...allPrices);
   const max = Math.max(...allPrices);
   const range = max - min;
@@ -71,6 +69,24 @@ function getPriceColor(price: number, allPrices: number[]): string {
   if (ratio <= 0.33) return 'text-[#22c55e]';
   if (ratio <= 0.66) return 'text-[#f59e0b]';
   return 'text-[#ef4444]';
+}
+
+// Processes items with at most `limit` concurrent async operations.
+// Workers stop processing if signal is aborted.
+async function runWithLimit(
+  items: string[],
+  limit: number,
+  fn: (item: string) => Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  const queue = [...items];
+  const worker = async () => {
+    while (queue.length > 0 && !signal.aborted) {
+      const item = queue.shift()!;
+      await fn(item).catch(() => {});
+    }
+  };
+  await Promise.allSettled(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
 export function PriceCalendar({
@@ -100,104 +116,91 @@ export function PriceCalendar({
     return startOfMonth(new Date());
   });
 
-  // All month prices kept in memory — navigating back is instant
-  // Key: `${direction}:${monthStr}`, Value: per-date map
-  const [allMonthPrices, setAllMonthPrices] = useState<Record<string, Record<string, DayEntry>>>({});
+  // Simple per-direction price maps — reset fully on each month/airport change
+  const [outboundPrices, setOutboundPrices] = useState<Record<string, DayEntry>>({});
+  const [returnPrices, setReturnPrices] = useState<Record<string, DayEntry>>({});
+  const [currency, setCurrency] = useState('EUR');
 
   const [previewFlight, setPreviewFlight] = useState<FlightOffer | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  // Track which month+direction combos are already loading to avoid duplicate fetches
-  const loadingKeys = useRef(new Set<string>());
+  const abortRef = useRef<AbortController | null>(null);
 
+  // Use primitive string deps — Airport objects re-created on every parent render
+  // (JSON.parse in results page) would trigger the effect on every render otherwise
+  const originCode = origin?.iataCode ?? null;
+  const destCode = destination?.iataCode ?? null;
   const monthStr = toMonthStr(currentMonth);
 
-  const loadMonthPrices = useCallback(
-    (orig: string, dest: string, month: string, direction: 'out' | 'ret') => {
-      const key = `${direction}:${month}:${orig}:${dest}`;
-      if (loadingKeys.current.has(key)) return;
-      loadingKeys.current.add(key);
-
-      const today0 = todayStr();
-      const dates = datesForMonth(month, today0);
-      if (dates.length === 0) return;
-
-      // Mark all days as loading immediately
-      const initial: Record<string, DayEntry> = {};
-      dates.forEach(d => { initial[d] = 'loading'; });
-      setAllMonthPrices(prev => ({
-        ...prev,
-        [key]: { ...(prev[key] ?? {}), ...initial },
-      }));
-
-      // Fire all requests in parallel — each is an independent serverless invocation
-      dates.forEach(date => {
-        const params = new URLSearchParams({
-          origin: orig,
-          destination: dest,
-          date,
-          adults: String(adults),
-        });
-        fetch(`/api/day-price?${params}`)
-          .then(r => r.json())
-          .then((data: { price?: number | null; currency?: string; airline?: string; stops?: number }) => {
-            setAllMonthPrices(prev => ({
-              ...prev,
-              [key]: {
-                ...(prev[key] ?? {}),
-                [date]: data.price != null
-                  ? { price: data.price, currency: data.currency ?? 'EUR', airline: data.airline ?? '', stops: data.stops ?? 0 }
-                  : null,
-              },
-            }));
-          })
-          .catch(() => {
-            setAllMonthPrices(prev => ({
-              ...prev,
-              [key]: { ...(prev[key] ?? {}), [date]: null },
-            }));
-          });
-      });
-    },
-    [adults],
-  );
-
-  // Load prices when airports or month changes
   useEffect(() => {
-    if (!origin || !destination) return;
-    loadMonthPrices(origin.iataCode, destination.iataCode, monthStr, 'out');
-    loadMonthPrices(destination.iataCode, origin.iataCode, monthStr, 'ret');
-  }, [origin, destination, monthStr, loadMonthPrices]);
+    if (!originCode || !destCode) return;
+
+    // Cancel any in-flight requests from the previous month / previous airports
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
+    const dates = datesForMonth(monthStr);
+
+    // Immediately reset both directions to loading state
+    const initial: Record<string, DayEntry> = {};
+    dates.forEach(d => { initial[d] = 'loading'; });
+    setOutboundPrices({ ...initial });
+    setReturnPrices({ ...initial });
+
+    if (dates.length === 0) return () => controller.abort();
+
+    const fetchDay = async (
+      orig: string,
+      dest: string,
+      date: string,
+      setter: React.Dispatch<React.SetStateAction<Record<string, DayEntry>>>,
+    ) => {
+      if (signal.aborted) return;
+      try {
+        const params = new URLSearchParams({ origin: orig, destination: dest, date, adults: String(adults) });
+        const res = await fetch(`/api/day-price?${params}`, { signal });
+        if (signal.aborted) return;
+        const data: { price?: number | null; currency?: string; airline?: string; stops?: number } = await res.json();
+        const entry: DayEntry = data.price != null
+          ? { price: data.price, currency: data.currency ?? 'EUR', airline: data.airline ?? '', stops: data.stops ?? 0 }
+          : null;
+        if (data.currency) setCurrency(data.currency);
+        setter(prev => ({ ...prev, [date]: entry }));
+      } catch (err) {
+        if ((err as { name?: string })?.name === 'AbortError') return;
+        setter(prev => ({ ...prev, [date]: null }));
+      }
+    };
+
+    // Fire both directions concurrently, each limited to MAX_CONCURRENT at a time
+    void runWithLimit(dates, MAX_CONCURRENT, d => fetchDay(originCode, destCode, d, setOutboundPrices), signal);
+    void runWithLimit(dates, MAX_CONCURRENT, d => fetchDay(destCode, originCode, d, setReturnPrices), signal);
+
+    return () => controller.abort();
+  }, [originCode, destCode, monthStr, adults]);
 
   // Fetch preview flight when both dates confirmed
   useEffect(() => {
-    if (!outboundDate || !returnDate || !origin || !destination || !isRoundTrip) {
+    if (!outboundDate || !returnDate || !originCode || !destCode || !isRoundTrip) {
       setPreviewFlight(null);
       return;
     }
     setPreviewLoading(true);
     fetch(
-      `/api/flights?origin=${origin.iataCode}&destination=${destination.iataCode}` +
+      `/api/flights?origin=${originCode}&destination=${destCode}` +
       `&date=${outboundDate}&return_date=${returnDate}&tripType=round-trip&adults=${adults}`,
     )
       .then(r => r.json())
       .then(data => setPreviewFlight(data.flights?.[0] ?? null))
       .catch(() => setPreviewFlight(null))
       .finally(() => setPreviewLoading(false));
-  }, [outboundDate, returnDate, origin, destination, adults, isRoundTrip]);
+  }, [outboundDate, returnDate, originCode, destCode, adults, isRoundTrip]);
 
-  // Current direction prices for the displayed month
-  const outKey = origin && destination ? `out:${monthStr}:${origin.iataCode}:${destination.iataCode}` : null;
-  const retKey = origin && destination ? `ret:${monthStr}:${destination.iataCode}:${origin.iataCode}` : null;
-
-  const activePrices = (mode === 'return' ? retKey : outKey)
-    ? (allMonthPrices[mode === 'return' ? retKey! : outKey!] ?? {})
-    : {};
-
-  // Is any day still loading?
+  const activePrices = mode === 'return' ? returnPrices : outboundPrices;
   const isLoading = Object.values(activePrices).some(v => v === 'loading');
 
-  // All resolved prices for color scale (recomputed as prices arrive)
   const resolvedPrices = useMemo(() => {
     return Object.values(activePrices)
       .filter((v): v is DayPrice => v !== null && v !== 'loading')
@@ -332,14 +335,13 @@ export function PriceCalendar({
 
               const entry = disabled ? null : (activePrices[dateStr] ?? null);
               const isEntryLoading = entry === 'loading';
-              const price = entry !== null && entry !== 'loading' ? entry.price : null;
-              const currency = entry !== null && entry !== 'loading' ? entry.currency : 'EUR';
+              const priceData = entry !== null && entry !== 'loading' ? entry : null;
 
               const isOutboundSelected = dateStr === outboundDate;
               const isReturnSelected = dateStr === returnDate;
               const isSelected = isOutboundSelected || isReturnSelected;
 
-              // Snake range
+              // Snake range highlight
               let inRange = false;
               let isRangeStart = false;
               let isRangeEnd = false;
@@ -384,12 +386,12 @@ export function PriceCalendar({
                     <span className="text-[10px] text-[#1a1a24]">—</span>
                   ) : isEntryLoading ? (
                     <div className="h-3 w-8 rounded bg-[#1a1a24] animate-pulse" />
-                  ) : price !== null ? (
+                  ) : priceData !== null ? (
                     <span className={cn(
                       'text-[10px] font-mono font-bold',
-                      isSelected ? 'text-white/80' : getPriceColor(price, resolvedPrices),
+                      isSelected ? 'text-white/80' : getPriceColor(priceData.price, resolvedPrices),
                     )}>
-                      {formatPrice(price, currency)}
+                      {formatPrice(priceData.price, currency)}
                     </span>
                   ) : (
                     <span className="text-[10px] text-[#2a2a3a]">—</span>
