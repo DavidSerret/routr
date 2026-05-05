@@ -14,6 +14,8 @@ import type { SortOption } from '@/lib/constants';
 import { SlidersHorizontal, X } from 'lucide-react';
 import { Navbar } from '@/components/ui/Navbar';
 
+const PAGE_SIZE = 30;
+
 function ResultsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -22,12 +24,15 @@ function ResultsContent() {
     openJawCombinations,
     searchMode,
     loading,
+    loadingMore,
+    hasMore,
     error,
     updatedAt,
     totalCount,
     hasExactDateResults,
     requestedDate,
     search,
+    loadMore,
   } = useFlightSearch();
 
   const cabinFromUrl = (searchParams.get('cabin')?.toLowerCase() ?? 'economy') as
@@ -161,16 +166,37 @@ function ResultsContent() {
               onDatesSelected={handleDatesSelected}
             />
           ) : (
-            <ResultsList
-              flights={filtered}
-              loading={loading}
-              sortBy={sortBy}
-              tripType={tripType}
-              hasExactDateResults={hasExactDateResults}
-              requestedDate={requestedDate}
-              openJawCombinations={openJawCombinations}
-              searchMode={searchMode}
-            />
+            <>
+              <ResultsList
+                flights={filtered}
+                loading={loading}
+                sortBy={sortBy}
+                tripType={tripType}
+                hasExactDateResults={hasExactDateResults}
+                requestedDate={requestedDate}
+                openJawCombinations={openJawCombinations}
+                searchMode={searchMode}
+              />
+              {hasMore && !loading && (
+                <div className="flex justify-center mt-6">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="flex items-center gap-2 px-6 py-3 rounded-lg border border-[#2a2a3a] bg-[#111118] text-sm font-medium text-[#8888aa] hover:border-[#6366f1]/50 hover:text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <span className="h-4 w-4 border-2 border-[#6366f1] border-t-transparent rounded-full animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      `Load ${Math.min(PAGE_SIZE, totalCount - flights.length)} more flights`
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { AirlineLogo } from '@/components/ui/AirlineLogo';
 import { cn, formatTime, formatDateShort, formatDuration, formatPrice, getStopLabel } from '@/lib/utils';
+import { distanceLabel } from '@/lib/airportDistance';
 import { BriefcaseBusiness, Luggage } from 'lucide-react';
 import type { FlightOffer, OpenJawCombination } from '@/lib/types';
 
@@ -63,8 +64,10 @@ function LegBlock({ flight, label, labelColor }: { flight: FlightOffer; label: s
 }
 
 export function OpenJawCard({ combination }: OpenJawCardProps) {
-  const { outbound, return: ret, totalPrice, isOpenJaw } = combination;
+  const { outbound, return: ret, totalPrice, isOpenJaw, distanceKm } = combination;
   const currency = outbound.currency;
+  const showDistanceWarning = isOpenJaw && distanceKm !== undefined && distanceKm >= 50;
+  const gapDescription = showDistanceWarning ? distanceLabel(distanceKm!).split('—')[1]?.trim() ?? '' : '';
 
   return (
     <article className="rounded-xl border border-[#2a2a3a] bg-[#111118] p-4 hover:border-[#6366f1]/40 transition-colors duration-200">
@@ -92,6 +95,17 @@ export function OpenJawCard({ combination }: OpenJawCardProps) {
 
       {/* Return leg */}
       <LegBlock flight={ret} label="↙ RET" labelColor="text-[#a5b4fc]" />
+
+      {/* Open-jaw distance warning */}
+      {showDistanceWarning && (
+        <div className="mt-3 flex items-start gap-1.5 rounded-md border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-400">
+          <span className="flex-shrink-0">⚠</span>
+          <span>
+            Open-jaw route · <strong>{outbound.destination}</strong> and <strong>{ret.origin}</strong> are{' '}
+            <strong>{distanceKm} km</strong> apart{gapDescription ? ` — ${gapDescription}` : ''}
+          </span>
+        </div>
+      )}
 
       {/* Bottom bar: baggage + CTA buttons */}
       <div className="mt-4 pt-3 border-t border-[#2a2a3a] flex flex-wrap items-center justify-between gap-3">

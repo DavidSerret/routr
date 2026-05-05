@@ -3,9 +3,32 @@ import { searchFlights } from '@/lib/duffel';
 import { normalizeDuffelOffer, isValidOffer } from '@/lib/duffelNormalizer';
 import { assignBadges } from '@/lib/utils';
 import { getCache, setCache, TTL } from '@/lib/cache';
+import { distanceBetweenAirports } from '@/lib/airportDistance';
 import type { FlightOffer, OpenJawCombination } from '@/lib/types';
 
 type CabinClass = 'economy' | 'premium_economy' | 'business' | 'first';
+type Passenger = { type: 'adult' | 'child' | 'infant_without_seat' };
+
+const PAGE_SIZE = 30;
+
+function deduplicateByFingerprint(offers: FlightOffer[]): FlightOffer[] {
+  const seen = new Map<string, FlightOffer>();
+  for (const offer of offers) {
+    const key = `${offer.origin}-${offer.destination}-${offer.departureAt.slice(0, 16)}-${offer.duration}`;
+    if (!seen.has(key) || offer.price < seen.get(key)!.price) {
+      seen.set(key, offer);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function combinationScore(combo: OpenJawCombination): number {
+  let score = combo.totalPrice;
+  if (combo.isOpenJaw && combo.distanceKm !== undefined && combo.distanceKm > 0) {
+    score += combo.distanceKm * 0.05;
+  }
+  return score;
+}
 
 export async function GET(req: NextRequest) {
   const p = req.nextUrl.searchParams;
@@ -18,6 +41,7 @@ export async function GET(req: NextRequest) {
   const adults = Math.max(1, parseInt(p.get('adults') ?? '1', 10));
   const children = Math.max(0, parseInt(p.get('children') ?? '0', 10));
   const cabin = (p.get('cabin') ?? 'economy') as CabinClass;
+  const page = Math.max(1, parseInt(p.get('page') ?? '1', 10));
 
   // Resolve origins/destinations (comma-separated for multi-city, fallback to single)
   const originsParam = p.get('origins');
@@ -29,24 +53,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required params: origin, destination, date' }, { status: 400 });
   }
 
-  const passengers = [
+  const passengers: Passenger[] = [
     ...Array(adults).fill({ type: 'adult' as const }),
     ...Array(children).fill({ type: 'child' as const }),
   ];
 
   // Route multi-city to open-jaw handler
   if (tripType === 'multi-city' && returnDate) {
-    return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin);
+    return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin, adults, children, page);
   }
 
   // Route grouped airport searches (multiple origins or destinations)
   if (origins.length > 1 || destinations.length > 1) {
     if (tripType === 'round-trip' && returnDate) {
-      return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin);
+      return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin, adults, children, page);
     }
-    return handleGroupedOneWaySearch(origins, destinations, date, passengers, cabin);
+    return handleGroupedOneWaySearch(origins, destinations, date, passengers, cabin, adults, children, page);
   }
 
+  // Single-pair search
   const singleOrigin = origins[0];
   const singleDest = destinations[0];
 
@@ -63,24 +88,16 @@ export async function GET(req: NextRequest) {
     const result = await searchFlights({ slices, passengers, cabin_class: cabin });
 
     const normalized = (result.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer);
-
-    const seen = new Map<string, typeof normalized[0]>();
-    for (const offer of normalized) {
-      const key = `${offer.origin}-${offer.destination}-${offer.departureAt.slice(0, 16)}-${offer.duration}`;
-      const existing = seen.get(key);
-      if (!existing || offer.price < existing.price) {
-        seen.set(key, offer);
-      }
-    }
-
     const flights = assignBadges(
-      Array.from(seen.values())
+      deduplicateByFingerprint(normalized)
         .sort((a, b) => a.price - b.price)
-        .slice(0, 30)
+        .slice(0, PAGE_SIZE)
     );
 
     const response = {
       flights,
+      page: 1,
+      hasMore: false,
       cached: false,
       updatedAt: new Date().toISOString(),
       totalCount: flights.length,
@@ -102,58 +119,63 @@ async function handleGroupedOneWaySearch(
   origins: string[],
   destinations: string[],
   date: string,
-  passengers: { type: 'adult' | 'child' | 'infant_without_seat' }[],
-  cabin: CabinClass
+  passengers: Passenger[],
+  cabin: CabinClass,
+  adults: number,
+  children: number,
+  page: number
 ): Promise<NextResponse> {
   const topOrigins = origins.slice(0, 5);
   const topDestinations = destinations.slice(0, 5);
 
-  const pairs: [string, string][] = [];
-  for (const o of topOrigins) {
-    for (const d of topDestinations) {
-      pairs.push([o, d]);
+  const cacheKey = `grouped-ow:${topOrigins.join('+')}->${topDestinations.join('+')}:${date}:${adults}:${children}:${cabin}`;
+  let allFlights = await getCache<FlightOffer[]>(cacheKey);
+
+  if (!allFlights) {
+    const pairs: [string, string][] = [];
+    for (const o of topOrigins) {
+      for (const d of topDestinations) {
+        pairs.push([o, d]);
+      }
+    }
+
+    const results = await Promise.allSettled(
+      pairs.map(([o, d]) =>
+        searchFlights({
+          slices: [{ origin: o, destination: d, departure_date: date }],
+          passengers,
+          cabin_class: cabin,
+        })
+      )
+    );
+
+    const raw: FlightOffer[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        raw.push(...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
+      }
+    }
+
+    allFlights = assignBadges(
+      deduplicateByFingerprint(raw).sort((a, b) => a.price - b.price)
+    );
+
+    if (allFlights.length > 0) {
+      await setCache(cacheKey, allFlights, TTL.FLIGHTS);
     }
   }
 
-  const results = await Promise.allSettled(
-    pairs.map(([o, d]) =>
-      searchFlights({
-        slices: [{ origin: o, destination: d, departure_date: date }],
-        passengers,
-        cabin_class: cabin,
-      })
-    )
-  );
-
-  const allOffers: FlightOffer[] = [];
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      allOffers.push(
-        ...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer)
-      );
-    }
-  }
-
-  const seen = new Map<string, FlightOffer>();
-  for (const offer of allOffers) {
-    const key = `${offer.origin}-${offer.destination}-${offer.departureAt.slice(0, 16)}-${offer.duration}`;
-    if (!seen.has(key) || offer.price < seen.get(key)!.price) {
-      seen.set(key, offer);
-    }
-  }
-
-  const flights = assignBadges(
-    Array.from(seen.values())
-      .sort((a, b) => a.price - b.price)
-      .slice(0, 30)
-  );
+  const totalCount = allFlights.length;
+  const paginated = allFlights.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return NextResponse.json({
-    flights,
+    flights: paginated,
+    page,
+    hasMore: page * PAGE_SIZE < totalCount,
     cached: false,
     updatedAt: new Date().toISOString(),
-    totalCount: flights.length,
-    currencyCode: flights[0]?.currency ?? 'EUR',
+    totalCount,
+    currencyCode: paginated[0]?.currency ?? 'EUR',
   });
 }
 
@@ -162,108 +184,121 @@ async function handleOpenJawSearch(
   destinations: string[],
   outboundDate: string,
   returnDate: string,
-  passengers: { type: 'adult' | 'child' | 'infant_without_seat' }[],
-  cabin: CabinClass
+  passengers: Passenger[],
+  cabin: CabinClass,
+  adults: number,
+  children: number,
+  page: number
 ): Promise<NextResponse> {
   const topOrigins = origins.slice(0, 5);
   const topDestinations = destinations.slice(0, 5);
 
-  // Search all origin→destination pairs for outbound
-  const outboundPairs: [string, string][] = [];
-  for (const o of topOrigins) {
-    for (const d of topDestinations) {
-      outboundPairs.push([o, d]);
-    }
-  }
+  const cacheKey = `openjaw:${topOrigins.join('+')}->${topDestinations.join('+')}:${outboundDate}:${returnDate}:${adults}:${children}:${cabin}`;
+  let allCombinations = await getCache<OpenJawCombination[]>(cacheKey);
 
-  // Search all destination→origin pairs for return
-  const returnPairs: [string, string][] = [];
-  for (const d of topDestinations) {
+  if (!allCombinations) {
+    const outboundPairs: [string, string][] = [];
     for (const o of topOrigins) {
-      returnPairs.push([d, o]);
+      for (const d of topDestinations) {
+        outboundPairs.push([o, d]);
+      }
+    }
+
+    const returnPairs: [string, string][] = [];
+    for (const d of topDestinations) {
+      for (const o of topOrigins) {
+        returnPairs.push([d, o]);
+      }
+    }
+
+    const [outboundResults, returnResults] = await Promise.all([
+      Promise.allSettled(
+        outboundPairs.map(([o, d]) =>
+          searchFlights({
+            slices: [{ origin: o, destination: d, departure_date: outboundDate }],
+            passengers,
+            cabin_class: cabin,
+          })
+        )
+      ),
+      Promise.allSettled(
+        returnPairs.map(([d, o]) =>
+          searchFlights({
+            slices: [{ origin: d, destination: o, departure_date: returnDate }],
+            passengers,
+            cabin_class: cabin,
+          })
+        )
+      ),
+    ]);
+
+    const outboundOffers: FlightOffer[] = [];
+    for (const result of outboundResults) {
+      if (result.status === 'fulfilled') {
+        outboundOffers.push(...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
+      }
+    }
+
+    const returnOffers: FlightOffer[] = [];
+    for (const result of returnResults) {
+      if (result.status === 'fulfilled') {
+        returnOffers.push(...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
+      }
+    }
+
+    // Top 15 outbound and return by price
+    const topOutbounds = deduplicateByFingerprint(outboundOffers)
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 15);
+    const topReturns = deduplicateByFingerprint(returnOffers)
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 15);
+
+    // Build all valid outbound × return combinations
+    const combinations: OpenJawCombination[] = [];
+    for (const outbound of topOutbounds) {
+      for (const ret of topReturns) {
+        // Return must depart after outbound arrives
+        if (new Date(ret.departureAt) < new Date(outbound.arrivalAt)) continue;
+
+        const isOpenJaw =
+          outbound.origin !== ret.destination ||
+          outbound.destination !== ret.origin;
+
+        const distanceKm = isOpenJaw
+          ? (distanceBetweenAirports(outbound.destination, ret.origin) ?? undefined)
+          : 0;
+
+        combinations.push({
+          outbound,
+          return: ret,
+          totalPrice: outbound.price + ret.price,
+          isOpenJaw,
+          outboundAirport: outbound.destination,
+          returnAirport: ret.origin,
+          distanceKm,
+        });
+      }
+    }
+
+    combinations.sort((a, b) => combinationScore(a) - combinationScore(b));
+    allCombinations = combinations;
+
+    if (allCombinations.length > 0) {
+      await setCache(cacheKey, allCombinations, TTL.FLIGHTS);
     }
   }
 
-  const [outboundResults, returnResults] = await Promise.all([
-    Promise.allSettled(
-      outboundPairs.map(([o, d]) =>
-        searchFlights({
-          slices: [{ origin: o, destination: d, departure_date: outboundDate }],
-          passengers,
-          cabin_class: cabin,
-        })
-      )
-    ),
-    Promise.allSettled(
-      returnPairs.map(([d, o]) =>
-        searchFlights({
-          slices: [{ origin: d, destination: o, departure_date: returnDate }],
-          passengers,
-          cabin_class: cabin,
-        })
-      )
-    ),
-  ]);
-
-  const outboundOffers: FlightOffer[] = [];
-  for (const result of outboundResults) {
-    if (result.status === 'fulfilled') {
-      outboundOffers.push(
-        ...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer)
-      );
-    }
-  }
-
-  const returnOffers: FlightOffer[] = [];
-  for (const result of returnResults) {
-    if (result.status === 'fulfilled') {
-      returnOffers.push(
-        ...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer)
-      );
-    }
-  }
-
-  // Group outbound by destination airport, return by origin airport (the hub connecting them)
-  const outboundByDest = groupBy(outboundOffers, o => o.destination);
-  const returnByOrigin = groupBy(returnOffers, r => r.origin);
-
-  const combinations: OpenJawCombination[] = [];
-
-  for (const [hubAirport, outbounds] of outboundByDest) {
-    const returns = returnByOrigin.get(hubAirport) ?? [];
-    if (returns.length === 0) continue;
-
-    const bestOutbound = outbounds.reduce((a, b) => a.price < b.price ? a : b);
-    const bestReturn = returns.reduce((a, b) => a.price < b.price ? a : b);
-
-    combinations.push({
-      outbound: bestOutbound,
-      return: bestReturn,
-      totalPrice: bestOutbound.price + bestReturn.price,
-      isOpenJaw: bestOutbound.origin !== bestReturn.destination,
-    });
-  }
-
-  const sorted = combinations
-    .sort((a, b) => a.totalPrice - b.totalPrice)
-    .slice(0, 20);
+  const totalCount = allCombinations.length;
+  const paginated = allCombinations.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return NextResponse.json({
-    flights: sorted,
+    flights: paginated,
+    page,
+    hasMore: page * PAGE_SIZE < totalCount,
     mode: 'open-jaw',
     cached: false,
     updatedAt: new Date().toISOString(),
-    totalCount: sorted.length,
+    totalCount,
   });
-}
-
-function groupBy<T>(arr: T[], keyFn: (item: T) => string): Map<string, T[]> {
-  const map = new Map<string, T[]>();
-  for (const item of arr) {
-    const key = keyFn(item);
-    const existing = map.get(key);
-    if (existing) existing.push(item);
-    else map.set(key, [item]);
-  }
-  return map;
 }

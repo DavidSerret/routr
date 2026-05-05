@@ -74,7 +74,8 @@
       "Bash(Select-String -Pattern \"DUFFEL\" -Quiet)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -Filter \"*FilterPanel*\")",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(Get-ChildItem -Path . -Name)"
+      "Bash(Get-ChildItem -Path . -Name)",
+      "Bash(node -e \"const d = require\\('./lib/data/airports.json'\\); console.log\\('entries:', d.length, 'fields:', Object.keys\\(d[0]\\).join\\(', '\\)\\)\")"
     ]
   }
 }

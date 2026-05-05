@@ -125,6 +125,9 @@ export interface OpenJawCombination {
   return: FlightOffer;
   totalPrice: number;
   isOpenJaw: boolean;
+  outboundAirport?: string;
+  returnAirport?: string;
+  distanceKm?: number;
 }
 
 export interface MonthlyPrice {
