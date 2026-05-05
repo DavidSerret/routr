@@ -58,6 +58,8 @@ function ResultsContent() {
         iataCode: code, name: code, cityName: code, countryCode: '', countryFlag: ''
       })) ?? [];
 
+  const originGroup = searchParams.get('originGroup') ?? undefined;
+  const destinationGroup = searchParams.get('destinationGroup') ?? undefined;
   const departureDate = searchParams.get('date') ?? '';
   const returnDate = searchParams.get('return') ?? undefined;
   const adults = parseInt(searchParams.get('adults') ?? '1', 10);
@@ -104,7 +106,7 @@ function ResultsContent() {
       <div className="mb-6">
         <SearchForm
           compact
-          initialValues={{ origins, destinations, departureDate, returnDate, adults, children, infants, tripType }}
+          initialValues={{ origins, destinations, departureDate, returnDate, adults, children, infants, tripType, originGroup, destinationGroup }}
         />
       </div>
 

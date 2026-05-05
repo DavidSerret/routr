@@ -39,6 +39,14 @@ export async function GET(req: NextRequest) {
     return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin);
   }
 
+  // Route grouped airport searches (multiple origins or destinations)
+  if (origins.length > 1 || destinations.length > 1) {
+    if (tripType === 'round-trip' && returnDate) {
+      return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin);
+    }
+    return handleGroupedOneWaySearch(origins, destinations, date, passengers, cabin);
+  }
+
   const singleOrigin = origins[0];
   const singleDest = destinations[0];
 
@@ -88,6 +96,65 @@ export async function GET(req: NextRequest) {
     console.error('Duffel search error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Flight search failed. Please try again.' }, { status: 500 });
   }
+}
+
+async function handleGroupedOneWaySearch(
+  origins: string[],
+  destinations: string[],
+  date: string,
+  passengers: { type: 'adult' | 'child' | 'infant_without_seat' }[],
+  cabin: CabinClass
+): Promise<NextResponse> {
+  const topOrigins = origins.slice(0, 5);
+  const topDestinations = destinations.slice(0, 5);
+
+  const pairs: [string, string][] = [];
+  for (const o of topOrigins) {
+    for (const d of topDestinations) {
+      pairs.push([o, d]);
+    }
+  }
+
+  const results = await Promise.allSettled(
+    pairs.map(([o, d]) =>
+      searchFlights({
+        slices: [{ origin: o, destination: d, departure_date: date }],
+        passengers,
+        cabin_class: cabin,
+      })
+    )
+  );
+
+  const allOffers: FlightOffer[] = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      allOffers.push(
+        ...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer)
+      );
+    }
+  }
+
+  const seen = new Map<string, FlightOffer>();
+  for (const offer of allOffers) {
+    const key = `${offer.origin}-${offer.destination}-${offer.departureAt.slice(0, 16)}-${offer.duration}`;
+    if (!seen.has(key) || offer.price < seen.get(key)!.price) {
+      seen.set(key, offer);
+    }
+  }
+
+  const flights = assignBadges(
+    Array.from(seen.values())
+      .sort((a, b) => a.price - b.price)
+      .slice(0, 30)
+  );
+
+  return NextResponse.json({
+    flights,
+    cached: false,
+    updatedAt: new Date().toISOString(),
+    totalCount: flights.length,
+    currencyCode: flights[0]?.currency ?? 'EUR',
+  });
 }
 
 async function handleOpenJawSearch(

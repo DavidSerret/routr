@@ -15,6 +15,8 @@ interface AirportMultiSelectProps {
   placeholder?: string;
   maxAirports?: number;
   className?: string;
+  initialGroupName?: string;
+  onGroupChange?: (name: string | null) => void;
 }
 
 interface GroupInfo {
@@ -32,25 +34,43 @@ export function AirportMultiSelect({
   placeholder,
   maxAirports = 6,
   className,
+  initialGroupName,
+  onGroupChange,
 }: AirportMultiSelectProps) {
   const [expanded, setExpanded] = useState(false);
-  const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(null);
+  const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(() => {
+    if (initialGroupName && values.length > 1) {
+      return {
+        name: initialGroupName,
+        countryCode: values[0]?.countryCode ?? '',
+        totalCount: values.length,
+        searchCount: values.length,
+        groupType: 'country',
+      };
+    }
+    return null;
+  });
+
+  function updateGroupInfo(info: GroupInfo | null) {
+    setGroupInfo(info);
+    onGroupChange?.(info?.name ?? null);
+  }
 
   function removeAirport(iataCode: string) {
     const next = values.filter(a => a.iataCode !== iataCode);
     onChange(next);
-    if (next.length === 0) setGroupInfo(null);
+    if (next.length === 0) updateGroupInfo(null);
   }
 
   function clearGroup() {
-    setGroupInfo(null);
+    updateGroupInfo(null);
     onChange([]);
   }
 
   function addAirport(airport: Airport | null) {
     if (!airport) return;
     if (values.some(a => a.iataCode === airport.iataCode)) return;
-    setGroupInfo(null);
+    updateGroupInfo(null);
     onChange([...values, airport]);
   }
 
@@ -68,7 +88,7 @@ export function AirportMultiSelect({
       };
     });
 
-    setGroupInfo({
+    updateGroupInfo({
       name: group.name,
       countryCode: group.countryCode,
       totalCount: group.airports.length,
@@ -148,9 +168,8 @@ export function AirportMultiSelect({
         <AirportInput
           value={primaryValue}
           onChange={(a) => {
-            setGroupInfo(null);
-            if (a) onChange([a, ...values.slice(1)]);
-            else onChange(values.slice(1));
+            updateGroupInfo(null);
+            onChange(a ? [a] : []);
           }}
           onGroupSelect={handleGroupSelect}
           placeholder={placeholder}
@@ -229,7 +248,7 @@ export function AirportMultiSelect({
             <AirportInput
               value={null}
               onChange={addAirport}
-              onGroupSelect={addGroupAirports}
+              onGroupSelect={handleGroupSelect}
               placeholder="Add another airport..."
             />
           )}

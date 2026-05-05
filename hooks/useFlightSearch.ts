@@ -34,8 +34,8 @@ export function useFlightSearch() {
     setState(s => ({ ...s, loading: true, error: null }));
 
     const sp = new URLSearchParams({
-      origin: params.origins[0]?.iataCode ?? '',
-      destination: params.destinations[0]?.iataCode ?? '',
+      origins: params.origins.map(o => o.iataCode).join(','),
+      destinations: params.destinations.map(d => d.iataCode).join(','),
       date: params.departureDate,
       tripType: params.tripType,
       adults: String(params.adults),
@@ -43,14 +43,8 @@ export function useFlightSearch() {
       cabin: params.cabinClass.toLowerCase(),
     });
 
-    if (params.tripType === 'round-trip' && params.returnDate) {
+    if (params.tripType !== 'one-way' && params.returnDate) {
       sp.set('return_date', params.returnDate);
-    }
-
-    if (params.tripType === 'multi-city') {
-      sp.set('origins', params.origins.map(o => o.iataCode).join(','));
-      sp.set('destinations', params.destinations.map(d => d.iataCode).join(','));
-      if (params.returnDate) sp.set('return_date', params.returnDate);
     }
 
     try {

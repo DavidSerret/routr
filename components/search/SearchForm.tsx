@@ -22,6 +22,8 @@ interface SearchFormProps {
     children?: number;
     infants?: number;
     tripType?: TripType;
+    originGroup?: string;
+    destinationGroup?: string;
   };
 }
 
@@ -40,6 +42,8 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
   const [children, setChildren] = useState(initialValues?.children ?? 0);
   const [infants, setInfants] = useState(initialValues?.infants ?? 0);
   const [error, setError] = useState<string | null>(null);
+  const [originGroupName, setOriginGroupName] = useState<string | null>(initialValues?.originGroup ?? null);
+  const [destinationGroupName, setDestinationGroupName] = useState<string | null>(initialValues?.destinationGroup ?? null);
 
   const swapAirports = useCallback(() => {
     setOrigins(destinations);
@@ -79,6 +83,8 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
     }
     if (children > 0) params.set('children', String(children));
     if (infants > 0) params.set('infants', String(infants));
+    if (originGroupName) params.set('originGroup', originGroupName);
+    if (destinationGroupName) params.set('destinationGroup', destinationGroupName);
 
     router.push(`/results?${params.toString()}`);
   }
@@ -105,7 +111,9 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
           <AirportMultiSelect
             label="From"
             values={origins}
-            onChange={setOrigins}
+            onChange={(a) => { setOrigins(a); if (a.length <= 1) setOriginGroupName(null); }}
+            initialGroupName={initialValues?.originGroup}
+            onGroupChange={setOriginGroupName}
             placeholder="Origin city or airport"
             className="flex-1"
           />
@@ -122,7 +130,9 @@ export function SearchForm({ compact = false, initialValues }: SearchFormProps) 
           <AirportMultiSelect
             label="To"
             values={destinations}
-            onChange={setDestinations}
+            onChange={(a) => { setDestinations(a); if (a.length <= 1) setDestinationGroupName(null); }}
+            initialGroupName={initialValues?.destinationGroup}
+            onGroupChange={setDestinationGroupName}
             placeholder="Destination city or airport"
             className="flex-1"
           />

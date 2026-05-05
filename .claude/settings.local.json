@@ -73,7 +73,8 @@
       "Bash(Get-Content .env.local)",
       "Bash(Select-String -Pattern \"DUFFEL\" -Quiet)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\david\\\\Desktop\\\\LocalSDU\\\\Portfolio\\\\Routr\" -Recurse -Filter \"*FilterPanel*\")",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path . -Name)"
     ]
   }
 }
