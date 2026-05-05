@@ -140,21 +140,19 @@ async function handleGroupedOneWaySearch(
       }
     }
 
-    const results = await Promise.allSettled(
+    const results = await Promise.all(
       pairs.map(([o, d]) =>
         searchFlights({
           slices: [{ origin: o, destination: d, departure_date: date }],
           passengers,
           cabin_class: cabin,
-        })
+        }).catch(err => { console.error(`[flights] one-way ${o}→${d}:`, err instanceof Error ? err.message : err); return { offers: [] }; })
       )
     );
 
     const raw: FlightOffer[] = [];
     for (const result of results) {
-      if (result.status === 'fulfilled') {
-        raw.push(...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
-      }
+      raw.push(...(result.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
     }
 
     allFlights = assignBadges(
@@ -196,7 +194,7 @@ async function handleOpenJawSearch(
   const topDestinations = destinations.slice(0, 5);
 
   const mode = allowOpenJaw ? 'oj' : 'rt';
-  const cacheKey = `openjaw:${mode}:${topOrigins.join('+')}->${topDestinations.join('+')}:${outboundDate}:${returnDate}:${adults}:${children}:${cabin}`;
+  const cacheKey = `openjaw:v2:${mode}:${topOrigins.join('+')}->${topDestinations.join('+')}:${outboundDate}:${returnDate}:${adults}:${children}:${cabin}`;
   let allCombinations = await getCache<OpenJawCombination[]>(cacheKey);
 
   if (!allCombinations) {
@@ -215,47 +213,46 @@ async function handleOpenJawSearch(
     }
 
     const [outboundResults, returnResults] = await Promise.all([
-      Promise.allSettled(
+      Promise.all(
         outboundPairs.map(([o, d]) =>
           searchFlights({
             slices: [{ origin: o, destination: d, departure_date: outboundDate }],
             passengers,
             cabin_class: cabin,
-          })
+          }).catch(err => { console.error(`[flights] outbound ${o}→${d}:`, err instanceof Error ? err.message : err); return { offers: [] }; })
         )
       ),
-      Promise.allSettled(
+      Promise.all(
         returnPairs.map(([d, o]) =>
           searchFlights({
             slices: [{ origin: d, destination: o, departure_date: returnDate }],
             passengers,
             cabin_class: cabin,
-          })
+          }).catch(err => { console.error(`[flights] return ${d}→${o}:`, err instanceof Error ? err.message : err); return { offers: [] }; })
         )
       ),
     ]);
 
     const outboundOffers: FlightOffer[] = [];
     for (const result of outboundResults) {
-      if (result.status === 'fulfilled') {
-        outboundOffers.push(...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
-      }
+      outboundOffers.push(...(result.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
+    }
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[flights] All outbound flight numbers:', outboundOffers.map(o => o.flightNumber));
     }
 
     const returnOffers: FlightOffer[] = [];
     for (const result of returnResults) {
-      if (result.status === 'fulfilled') {
-        returnOffers.push(...(result.value.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
-      }
+      returnOffers.push(...(result.offers ?? []).filter(isValidOffer).map(normalizeDuffelOffer));
     }
 
-    // Top 15 outbound and return by price
+    // Top 25 outbound and return by price
     const topOutbounds = deduplicateByFingerprint(outboundOffers)
       .sort((a, b) => a.price - b.price)
-      .slice(0, 15);
+      .slice(0, 25);
     const topReturns = deduplicateByFingerprint(returnOffers)
       .sort((a, b) => a.price - b.price)
-      .slice(0, 15);
+      .slice(0, 25);
 
     // Build all valid outbound × return combinations
     const combinations: OpenJawCombination[] = [];

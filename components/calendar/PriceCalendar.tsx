@@ -28,6 +28,8 @@ type DayEntry = DayPrice | 'loading' | null;
 interface PriceCalendarProps {
   origin: Airport | null;
   destination: Airport | null;
+  allOrigins?: Airport[];
+  allDestinations?: Airport[];
   tripType?: TripType;
   initialOutboundDate?: string;
   initialReturnDate?: string;
@@ -92,6 +94,8 @@ async function runWithLimit(
 export function PriceCalendar({
   origin,
   destination,
+  allOrigins,
+  allDestinations,
   tripType = 'round-trip',
   initialOutboundDate,
   initialReturnDate,
@@ -188,8 +192,10 @@ export function PriceCalendar({
       return;
     }
     setPreviewLoading(true);
+    const effectiveOrigins = allOrigins?.length ? allOrigins.map(a => a.iataCode).join(',') : originCode ?? '';
+    const effectiveDestinations = allDestinations?.length ? allDestinations.map(a => a.iataCode).join(',') : destCode ?? '';
     fetch(
-      `/api/flights?origin=${originCode}&destination=${destCode}` +
+      `/api/flights?origins=${effectiveOrigins}&destinations=${effectiveDestinations}` +
       `&date=${outboundDate}&return_date=${returnDate}&tripType=round-trip&adults=${adults}`,
     )
       .then(r => r.json())

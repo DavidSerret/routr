@@ -159,6 +159,8 @@ function ResultsContent() {
             <PriceCalendar
               origin={origins[0] ?? null}
               destination={destinations[0] ?? null}
+              allOrigins={origins}
+              allDestinations={destinations}
               tripType={tripType}
               initialOutboundDate={departureDate || undefined}
               initialReturnDate={returnDate}
