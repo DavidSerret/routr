@@ -58,15 +58,16 @@ export async function GET(req: NextRequest) {
     ...Array(children).fill({ type: 'child' as const }),
   ];
 
-  // Route multi-city to open-jaw handler
+  // Route multi-city to open-jaw handler (open-jaw allowed)
   if (tripType === 'multi-city' && returnDate) {
-    return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin, adults, children, page);
+    return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin, adults, children, page, true);
   }
 
   // Route grouped airport searches (multiple origins or destinations)
   if (origins.length > 1 || destinations.length > 1) {
     if (tripType === 'round-trip' && returnDate) {
-      return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin, adults, children, page);
+      // Round-trip: same-airport pairs only (no open-jaw)
+      return handleOpenJawSearch(origins, destinations, date, returnDate, passengers, cabin, adults, children, page, false);
     }
     return handleGroupedOneWaySearch(origins, destinations, date, passengers, cabin, adults, children, page);
   }
@@ -188,12 +189,14 @@ async function handleOpenJawSearch(
   cabin: CabinClass,
   adults: number,
   children: number,
-  page: number
+  page: number,
+  allowOpenJaw: boolean
 ): Promise<NextResponse> {
   const topOrigins = origins.slice(0, 5);
   const topDestinations = destinations.slice(0, 5);
 
-  const cacheKey = `openjaw:${topOrigins.join('+')}->${topDestinations.join('+')}:${outboundDate}:${returnDate}:${adults}:${children}:${cabin}`;
+  const mode = allowOpenJaw ? 'oj' : 'rt';
+  const cacheKey = `openjaw:${mode}:${topOrigins.join('+')}->${topDestinations.join('+')}:${outboundDate}:${returnDate}:${adults}:${children}:${cabin}`;
   let allCombinations = await getCache<OpenJawCombination[]>(cacheKey);
 
   if (!allCombinations) {
@@ -261,9 +264,14 @@ async function handleOpenJawSearch(
         // Return must depart after outbound arrives
         if (new Date(ret.departureAt) < new Date(outbound.arrivalAt)) continue;
 
-        const isOpenJaw =
-          outbound.origin !== ret.destination ||
-          outbound.destination !== ret.origin;
+        const isSameAirports =
+          outbound.destination === ret.origin &&
+          outbound.origin === ret.destination;
+
+        // Round-trip mode: only same-airport pairs; open-jaw mode: allow all
+        if (!allowOpenJaw && !isSameAirports) continue;
+
+        const isOpenJaw = !isSameAirports;
 
         const distanceKm = isOpenJaw
           ? (distanceBetweenAirports(outbound.destination, ret.origin) ?? undefined)

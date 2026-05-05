@@ -39,11 +39,22 @@ export type FlightBadge = 'cheapest' | 'fastest' | 'best-value';
 export interface FlightSegment {
   flightNumber: string;
   origin: string;
+  originCity: string;
   destination: string;
+  destinationCity: string;
   departureAt: string;
   arrivalAt: string;
+  duration: string;
   airline: string;
+  airlineCode: string;
   aircraft: string | null;
+}
+
+export interface Layover {
+  airport: string;
+  airportCity: string;
+  durationMinutes: number;
+  durationLabel: string;
 }
 
 export interface FlightOffer {
@@ -76,6 +87,7 @@ export interface FlightOffer {
   source: 'duffel' | 'travelpayouts';
   badges: FlightBadge[];
   updatedAt: string;
+  layovers?: Layover[];
 }
 
 export interface CalendarDay {

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { AirlineLogo } from '@/components/ui/AirlineLogo';
 import { FlightBadgeChip } from '@/components/ui/FlightBadge';
 import { cn, formatTime, formatDateShort, formatDuration, formatPrice, getStopLabel, isExpired } from '@/lib/utils';
-import { AlertTriangle, ChevronDown, ChevronUp, Luggage, BriefcaseBusiness } from 'lucide-react';
+import { AlertTriangle, Luggage, BriefcaseBusiness } from 'lucide-react';
+import { LayoverDetails } from './LayoverDetails';
 import type { FlightOffer, TripType } from '@/lib/types';
 
 interface FlightCardProps {
@@ -79,7 +79,6 @@ function LegBlock({ label, labelColor, airline, airlineName, flightNumber, depar
 }
 
 export function FlightCard({ flight, tripType }: FlightCardProps) {
-  const [showSegments, setShowSegments] = useState(false);
   const expired = isExpired(flight.expiresAt);
 
   const hasReturn = tripType !== 'one-way' && flight.returnAt && flight.returnArrivalAt;
@@ -117,29 +116,8 @@ export function FlightCard({ flight, tripType }: FlightCardProps) {
       />
 
       {/* Layover details (connecting outbound flights) */}
-      {flight.segments && flight.segments.length > 1 && (
-        <div className="mt-2">
-          <button
-            type="button"
-            onClick={() => setShowSegments(s => !s)}
-            className="flex items-center gap-1 text-xs text-[#6366f1] hover:text-[#a5b4fc] transition-colors"
-          >
-            {showSegments ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            {showSegments ? 'Hide' : 'Layover details'}
-          </button>
-          {showSegments && (
-            <div className="mt-2 space-y-1.5 rounded-lg bg-[#0d0d14] border border-[#2a2a3a] p-2.5">
-              {flight.segments.map((seg, i) => (
-                <div key={i} className="flex items-center justify-between text-xs text-[#8888aa] gap-2">
-                  <span className="font-mono text-white font-medium">{seg.flightNumber}</span>
-                  <span>{seg.origin} → {seg.destination}</span>
-                  <span>{formatTime(seg.departureAt)} – {formatTime(seg.arrivalAt)}</span>
-                  {seg.aircraft && <span className="text-[#55556a] hidden sm:inline">{seg.aircraft}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {flight.stops > 0 && flight.segments && flight.segments.length > 1 && (
+        <LayoverDetails segments={flight.segments} layovers={flight.layovers} />
       )}
 
       {/* Return leg (round-trip) */}

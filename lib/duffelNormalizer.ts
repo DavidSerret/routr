@@ -1,4 +1,18 @@
-import type { FlightOffer, FlightSegment } from './types';
+import airportsData from '@/lib/data/airports.json';
+import type { FlightOffer, FlightSegment, Layover } from './types';
+
+const airports = airportsData as { code: string; city: string }[];
+
+function getCityName(iata: string): string {
+  return airports.find(a => a.code === iata)?.city ?? iata;
+}
+
+function segmentDuration(departureAt: string, arrivalAt: string): string {
+  const mins = Math.round((new Date(arrivalAt).getTime() - new Date(departureAt).getTime()) / 60000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
 
 export function normalizeDuffelOffer(offer: any): FlightOffer {
   const firstSlice = offer.slices[0];
@@ -23,15 +37,37 @@ export function normalizeDuffelOffer(offer: any): FlightOffer {
 
   const bookingUrl = `https://www.google.com/travel/flights?q=flights+from+${origin}+to+${destination}+on+${date}`;
 
-  const segments: FlightSegment[] = firstSlice.segments.map((seg: any) => ({
-    flightNumber: `${seg.marketing_carrier?.iata_code ?? ''}${seg.marketing_carrier_flight_number ?? ''}`,
-    origin: seg.origin?.iata_code ?? seg.origin?.id ?? '',
-    destination: seg.destination?.iata_code ?? seg.destination?.id ?? '',
-    departureAt: seg.departing_at,
-    arrivalAt: seg.arriving_at,
-    airline: seg.marketing_carrier?.iata_code ?? '',
-    aircraft: seg.aircraft?.name ?? null,
-  }));
+  const segments: FlightSegment[] = firstSlice.segments.map((seg: any) => {
+    const segOrigin = seg.origin?.iata_code ?? seg.origin?.id ?? '';
+    const segDest = seg.destination?.iata_code ?? seg.destination?.id ?? '';
+    return {
+      flightNumber: `${seg.marketing_carrier?.iata_code ?? ''}${seg.marketing_carrier_flight_number ?? ''}`,
+      origin: segOrigin,
+      originCity: seg.origin?.city_name ?? getCityName(segOrigin),
+      destination: segDest,
+      destinationCity: seg.destination?.city_name ?? getCityName(segDest),
+      departureAt: seg.departing_at,
+      arrivalAt: seg.arriving_at,
+      duration: segmentDuration(seg.departing_at, seg.arriving_at),
+      airline: seg.marketing_carrier?.name ?? seg.marketing_carrier?.iata_code ?? '',
+      airlineCode: seg.marketing_carrier?.iata_code ?? '',
+      aircraft: seg.aircraft?.name ?? null,
+    };
+  });
+
+  const layovers: Layover[] = segments.slice(0, -1).map((seg, i) => {
+    const durationMinutes = Math.round(
+      (new Date(segments[i + 1].departureAt).getTime() - new Date(seg.arrivalAt).getTime()) / 60000
+    );
+    const h = Math.floor(durationMinutes / 60);
+    const m = durationMinutes % 60;
+    return {
+      airport: seg.destination,
+      airportCity: getCityName(seg.destination),
+      durationMinutes,
+      durationLabel: m > 0 ? `${h}h ${m}m` : `${h}h`,
+    };
+  });
 
   // Return slice (round-trip)
   const returnSlice = offer.slices.length > 1 ? offer.slices[1] : null;
@@ -69,6 +105,7 @@ export function normalizeDuffelOffer(offer: any): FlightOffer {
     carryOnIncluded,
     aircraft: firstSegment.aircraft?.name ?? null,
     segments,
+    layovers: layovers.length > 0 ? layovers : undefined,
     source: 'duffel',
     badges: [],
     updatedAt: new Date().toISOString(),

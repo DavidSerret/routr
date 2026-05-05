@@ -4,6 +4,7 @@ import { AirlineLogo } from '@/components/ui/AirlineLogo';
 import { cn, formatTime, formatDateShort, formatDuration, formatPrice, getStopLabel } from '@/lib/utils';
 import { distanceLabel } from '@/lib/airportDistance';
 import { BriefcaseBusiness, Luggage } from 'lucide-react';
+import { LayoverDetails } from './LayoverDetails';
 import type { FlightOffer, OpenJawCombination } from '@/lib/types';
 
 interface OpenJawCardProps {
@@ -89,12 +90,18 @@ export function OpenJawCard({ combination }: OpenJawCardProps) {
 
       {/* Outbound leg */}
       <LegBlock flight={outbound} label="↗ OUT" labelColor="text-[#6366f1]" />
+      {outbound.stops > 0 && outbound.segments && outbound.segments.length > 1 && (
+        <LayoverDetails segments={outbound.segments} layovers={outbound.layovers} />
+      )}
 
       {/* Divider */}
       <div className="my-4 border-t border-dashed border-[#2a2a3a]" />
 
       {/* Return leg */}
       <LegBlock flight={ret} label="↙ RET" labelColor="text-[#a5b4fc]" />
+      {ret.stops > 0 && ret.segments && ret.segments.length > 1 && (
+        <LayoverDetails segments={ret.segments} layovers={ret.layovers} />
+      )}
 
       {/* Open-jaw distance warning */}
       {showDistanceWarning && (
